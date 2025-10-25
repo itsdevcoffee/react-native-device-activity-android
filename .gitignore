@@ -1,75 +1,141 @@
-# dependencies
+# ===================================
+# Dependencies
+# ===================================
 node_modules/
+package-lock.json
+.yarn
 
-# expo
+# ===================================
+# Expo
+# ===================================
 .expo/
 dist/
 web-build/
 expo-env.d.ts
 
-# native
-*.orig.*
+# ===================================
+# Android
+# ===================================
+# Gradle
+.gradle/
+**/android/.gradle/
+**/android/local.properties
+
+# Build outputs
+**/android/build/
+**/android/.cxx/
+**/android/captures/
+**/android/app/build/
+**/android/.externalNativeBuild/
+
+# Android Studio
+*.iml
+.idea/
+*.hprof
+
+# APK/AAB files (build outputs)
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Keystore files (security)
 *.jks
+*.keystore
+
+# ===================================
+# iOS
+# ===================================
+**/ios/Pods/
+**/ios/**/*.xcworkspace/xcuserdata/
+**/ios/**/*.xcodeproj/xcuserdata/
+**/ios/**/*.xcodeproj/project.xcworkspace/xcuserdata/
+**/ios/build/
+DerivedData/
+
+# Native signing files
 *.p8
 *.p12
 *.key
 *.mobileprovision
-
-# metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macos
-.DS_Store
+*.orig.*
+*.cer
+*.p12
 *.pem
 
-# local env files
-.env*.local
+# ===================================
+# Metro Bundler
+# ===================================
+.metro-health-check*
 
-# typescript
-*.tsbuildinfo
-
-# Added by Claude Task Master
-# Logs
-logs
+# ===================================
+# Logs & Debug
+# ===================================
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 dev-debug.log
-# Dependency directories
-# Environment variables
+
+# ===================================
+# Environment Files
+# ===================================
 .env
-# Editor directories and files
-.idea
-.vscode
+.env*.local
+
+# ===================================
+# TypeScript
+# ===================================
+*.tsbuildinfo
+lib/
+
+# ===================================
+# Editors & IDEs
+# ===================================
+.idea/
+.vscode/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-# OS specific
-# Task files
+*.swp
+*~
+
+# ===================================
+# Operating System
+# ===================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# ===================================
+# Project Specific
+# ===================================
+# Task management
 tasks.json
-tasks/ 
+tasks/
 .obsidian
 
+# Backend credentials
 backend/credentials/*
-package-lock.json
-.yarn
-
-# Removed targets/ActivityMonitorExtension/ - needed for EAS builds
 
 # PostHog data exports (large files)
 data/posthog/
 
 # Claude Code context files
 .claude/
-lib/
 
 # Prevent root-level native directories (monorepo - only in apps/example)
 /android
