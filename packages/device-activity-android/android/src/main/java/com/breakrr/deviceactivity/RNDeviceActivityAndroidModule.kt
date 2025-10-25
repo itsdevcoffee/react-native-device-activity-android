@@ -3,11 +3,19 @@ package com.breakrr.deviceactivity
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.util.Base64
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import java.io.ByteArrayOutputStream
 
 /**
  * React Native bridge module for Device Activity Android.
@@ -221,6 +229,108 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
   }
 
   /**
+   * Get list of installed user-facing applications.
+   * Returns apps that have a launcher intent and are not system apps.
+   * Includes updated system apps (like pre-installed apps from Play Store).
+   */
+  @ReactMethod
+  fun getInstalledApps(includeIcons: Boolean, promise: Promise) {
+    try {
+      val packageManager = reactContext.packageManager
+
+      // Data class to hold app info before converting to WritableMap
+      data class AppData(
+        val packageName: String,
+        val name: String,
+        val icon: String?
+      )
+
+      val appsList = mutableListOf<AppData>()
+
+      // Get all installed applications
+      val installedApps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+
+      android.util.Log.d("RNDeviceActivity", "Total installed apps: ${installedApps.size}")
+
+      for (appInfo in installedApps) {
+        // Filter criteria:
+        // - User apps: include all (they were explicitly installed by the user)
+        // - System apps: only include if updated AND have launcher (like Chrome, YouTube from Play Store)
+        val isUserApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0
+        val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+
+        // For user apps, we include them all since they were explicitly installed
+        // For system apps, check if they have a launcher (updated system apps only)
+        val shouldInclude = if (isUserApp) {
+          // User app - include it
+          true
+        } else if (isUpdatedSystemApp) {
+          // Updated system app - check for launcher
+          try {
+            packageManager.getLaunchIntentForPackage(appInfo.packageName) != null
+          } catch (e: Exception) {
+            false
+          }
+        } else {
+          // Regular system app - skip it
+          false
+        }
+
+        if (shouldInclude) {
+          try {
+            val packageName = appInfo.packageName
+            val name = appInfo.loadLabel(packageManager).toString()
+
+            // Optionally include icon as base64
+            val icon = if (includeIcons) {
+              try {
+                drawableToBase64(appInfo.loadIcon(packageManager))
+              } catch (e: Exception) {
+                // If icon loading fails, continue without icon
+                null
+              }
+            } else {
+              null
+            }
+
+            appsList.add(AppData(packageName, name, icon))
+          } catch (e: Exception) {
+            // Skip apps that fail to load
+            android.util.Log.w("RNDeviceActivity", "Failed to load app: ${appInfo.packageName}", e)
+          }
+        }
+      }
+
+      // Sort alphabetically by name (case-insensitive)
+      appsList.sortBy { it.name.lowercase() }
+
+      android.util.Log.d("RNDeviceActivity", "Final app list size: ${appsList.size}")
+
+      // Convert to WritableArray
+      val apps = WritableNativeArray()
+      for (appData in appsList) {
+        val appMap = WritableNativeMap()
+        appMap.putString("packageName", appData.packageName)
+        appMap.putString("name", appData.name)
+
+        if (includeIcons) {
+          if (appData.icon != null) {
+            appMap.putString("icon", appData.icon)
+          } else {
+            appMap.putNull("icon")
+          }
+        }
+
+        apps.pushMap(appMap)
+      }
+
+      promise.resolve(apps)
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Failed to get installed apps: ${e.message}", e)
+    }
+  }
+
+  /**
    * Required for NativeEventEmitter.
    * Called when JS adds a listener.
    */
@@ -307,5 +417,38 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
       message = map.getString("message") ?: "This app is currently blocked.",
       ctaText = map.getString("ctaText") ?: "Dismiss"
     )
+  }
+
+  /**
+   * Convert drawable to base64 string for React Native.
+   * Used for app icons.
+   */
+  private fun drawableToBase64(drawable: Drawable): String {
+    val bitmap = when (drawable) {
+      is BitmapDrawable -> drawable.bitmap
+      else -> {
+        val bitmap = Bitmap.createBitmap(
+          drawable.intrinsicWidth,
+          drawable.intrinsicHeight,
+          Bitmap.Config.ARGB_8888
+        )
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        bitmap
+      }
+    }
+
+    // Scale down if too large (max 96x96 for performance)
+    val scaledBitmap = if (bitmap.width > 96 || bitmap.height > 96) {
+      Bitmap.createScaledBitmap(bitmap, 96, 96, true)
+    } else {
+      bitmap
+    }
+
+    val outputStream = ByteArrayOutputStream()
+    scaledBitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+    val byteArray = outputStream.toByteArray()
+    return Base64.encodeToString(byteArray, Base64.NO_WRAP)
   }
 }

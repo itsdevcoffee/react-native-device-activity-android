@@ -18,7 +18,7 @@ The goal is parity with [`kingstinct/react-native-device-activity`](https://gith
 
 ## ⚙️ Responsibilities for Claude
 
-Claude acts as a **maintainer assistant and documentation-aware code agent**.  
+Claude acts as a **maintainer assistant and documentation-aware code agent**.
 When contributing, it must:
 
 1. **Maintain parity** with the iOS package (naming conventions, method signatures, event schemas).
@@ -28,6 +28,7 @@ When contributing, it must:
 5. **Preserve Expo config plugin support** and test in Expo dev build context.
 6. **Document all public APIs** in `README.md` whenever new methods are added.
 7. **Avoid introducing external dependencies** unless required for core functionality.
+8. **Keep documentation up-to-date** — this is critical for open-source success (see Documentation Maintenance below).
 
 ---
 
@@ -51,6 +52,67 @@ When contributing, it must:
 └── package.json
 
 ```
+
+---
+
+## 📝 Documentation Maintenance
+
+**CRITICAL**: This package will be open-sourced and documentation quality directly impacts adoption and usability.
+
+### When to Update README.md
+
+Claude MUST update `packages/device-activity-android/README.md` whenever:
+
+1. **New methods are added** to the native module or TypeScript API
+   - Add to API Reference section with clear description
+   - Include usage examples if the method is non-trivial
+   - Update type definitions
+
+2. **Method signatures change** (new parameters, return types)
+   - Update API Reference
+   - Update code examples that use the changed method
+   - Add migration notes if breaking change
+
+3. **New features are implemented**
+   - Add a dedicated section or subsection explaining the feature
+   - Provide working code examples
+   - Document any new permissions or setup steps required
+
+4. **Behavior changes significantly**
+   - Update "How It Works" section
+   - Update troubleshooting if relevant
+   - Add notes about compatibility or migration
+
+5. **Known limitations change** or new ones discovered
+   - Update "Known Limitations" section
+   - Be honest and upfront about constraints
+
+6. **Dependencies or requirements change**
+   - Update "Requirements" section (Expo SDK version, Android API level, etc.)
+   - Update installation instructions if needed
+
+### Documentation Best Practices
+
+- **Be example-driven**: Show, don't just tell. Every API should have a code example.
+- **Be honest about limitations**: Users appreciate transparency about what doesn't work.
+- **Keep it scannable**: Use headers, bullet points, and code blocks generously.
+- **Update incrementally**: Don't wait for "big documentation updates" — update as you code.
+- **Cross-reference**: Link between related sections (e.g., troubleshooting → permissions).
+- **Test your examples**: Copy-paste examples into the demo app to verify they work.
+
+### Periodic Review Checklist
+
+When asked or when making significant changes, Claude should verify:
+
+- [ ] All public methods in `index.ts` are documented in README
+- [ ] All type exports have corresponding documentation
+- [ ] Code examples in README are syntactically valid
+- [ ] Example app demonstrates all major features
+- [ ] Troubleshooting section covers common issues seen in development
+- [ ] Google Play compliance section is up-to-date with latest policies
+- [ ] Installation and setup instructions work from scratch
+
+**Remember**: Good documentation is the difference between a library that gets adopted and one that gets ignored. Treat README.md as a first-class artifact.
 
 ---
 
@@ -150,13 +212,18 @@ Claude must respect Google Play Developer Policy regarding Accessibility usage:
 Claude acts as:
 
 * Code architect
+* Documentation maintainer (README.md is a first-class artifact)
 * Documentation syncer via Context7 MCP
 * Parity enforcer with iOS DeviceActivity model
 * Expo integration validator
 
 Whenever in doubt, Claude should:
 
-> “Use Context7 MCP to fetch the latest Expo, React Native, or Android docs before coding.”
+> "Use Context7 MCP to fetch the latest Expo, React Native, or Android docs before coding."
+
+When making changes, Claude must remember:
+
+> "This package will be open-sourced. Every API change requires README.md updates. Good docs = adoption."
 
 ---
 

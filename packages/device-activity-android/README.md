@@ -120,6 +120,22 @@ type SessionConfig = {
 }
 ```
 
+## How It Works
+
+The library uses a combination of Android system APIs to detect and block apps:
+
+1. **UsageStatsManager Polling**: Continuously monitors the foreground app using UsageStatsManager API, which provides reliable app detection without extensive accessibility permissions abuse.
+
+2. **Accessibility Service**: Required to display system-level overlays and provide the accessibility context needed for blocking functionality.
+
+3. **Window Overlays**: When a blocked app is detected, the library displays a full-screen overlay with customizable messaging to prevent access.
+
+The blocking mechanism includes:
+- A foreground check that runs periodically to detect app switches
+- Session-based blocking with configurable start/end times
+- Cooldown periods to prevent overlay reappearing after dismissal
+- Event emission for tracking user behavior and block attempts
+
 ### Listening to Events
 
 ```typescript
@@ -144,21 +160,46 @@ const subscription = DeviceActivityAndroid.addListener(event => {
 subscription.remove()
 ```
 
+### Getting Installed Apps
+
+```typescript
+// Get list of all installed user-facing apps
+const apps = await DeviceActivityAndroid.getInstalledApps(true) // true = include icons
+
+// Filter and display apps
+apps.forEach(app => {
+  console.log(`${app.name} (${app.packageName})`)
+  if (app.icon) {
+    // icon is base64-encoded PNG, ready for <Image source={{ uri: `data:image/png;base64,${app.icon}` }} />
+  }
+})
+```
+
+**Note**: This method filters out system apps and returns only apps with launcher activities. It includes updated system apps (like pre-installed apps that have been updated via Play Store).
+
 ### API Reference
 
 #### Methods
 
-- `getPermissionsStatus(): Promise<PermissionsStatus>`
-- `requestAccessibilityPermission(): Promise<void>`
-- `requestOverlayPermission(): Promise<void>`
-- `requestUsageAccessPermission(): Promise<void>`
-- `startSession(config: SessionConfig, style?: ShieldStyle): Promise<void>`
-- `updateSession(config: Partial<SessionConfig> & { id: string }): Promise<void>`
-- `stopSession(sessionId: string): Promise<void>`
-- `stopAllSessions(): Promise<void>`
-- `getCurrentForegroundApp(): Promise<ForegroundApp>`
-- `isServiceRunning(): Promise<boolean>`
-- `addListener(callback: (event: BlockEvent) => void): { remove(): void }`
+##### Permission Management
+- `getPermissionsStatus(): Promise<PermissionsStatus>` - Get current permission status for all required permissions
+- `requestAccessibilityPermission(): Promise<void>` - Open system settings to enable Accessibility Service
+- `requestOverlayPermission(): Promise<void>` - Open system settings to grant overlay permission
+- `requestUsageAccessPermission(): Promise<void>` - Open system settings to grant usage access permission
+
+##### Session Management
+- `startSession(config: SessionConfig, style?: ShieldStyle): Promise<void>` - Start a new blocking session
+- `updateSession(config: Partial<SessionConfig> & { id: string }): Promise<void>` - Update an existing session configuration
+- `stopSession(sessionId: string): Promise<void>` - Stop a specific blocking session by ID
+- `stopAllSessions(): Promise<void>` - Stop all active blocking sessions
+
+##### App Information
+- `getCurrentForegroundApp(): Promise<ForegroundApp>` - Get the current foreground app package name (best effort)
+- `getInstalledApps(includeIcons?: boolean): Promise<Array<{ packageName: string; name: string; icon?: string }>>` - Get list of installed user-facing applications with optional icons
+- `isServiceRunning(): Promise<boolean>` - Check if the accessibility service is currently running
+
+##### Event Handling
+- `addListener(callback: (event: BlockEvent) => void): { remove(): void }` - Add a listener for block events (block_shown, block_dismissed, app_attempt, service_state)
 
 See [index.d.ts](./index.d.ts) for complete type definitions.
 
@@ -224,7 +265,76 @@ if (!overlayEnabled) {
 
 ## Example App
 
-See the [example app](../../apps/example) for a complete working implementation.
+See the [example app](../../apps/example) for a complete working implementation that demonstrates:
+- Permission onboarding flow
+- App selection UI with icons and search
+- Starting/stopping focus sessions
+- Visual feedback during active sessions
+
+To run the example app:
+
+```bash
+cd apps/example
+npx expo prebuild -p android
+npx expo run:android
+```
+
+## Development
+
+This package is part of a monorepo. To contribute:
+
+1. Clone the repository
+2. Install dependencies: `yarn install`
+3. Navigate to the example app: `cd apps/example`
+4. Prebuild and run: `npx expo prebuild -p android && npx expo run:android`
+
+### Making Changes
+
+- **Native code**: Edit files in `packages/device-activity-android/android/src/main/java/com/breakrr/deviceactivity/`
+- **JavaScript bridge**: Edit `packages/device-activity-android/src/index.ts`
+- **Type definitions**: Update `packages/device-activity-android/index.d.ts`
+- **Config plugin**: Modify `packages/device-activity-android/plugin/app.plugin.js`
+
+After making native changes, rebuild the example app:
+
+```bash
+cd apps/example
+npx expo prebuild -p android --clean
+npx expo run:android
+```
+
+## Architecture Notes
+
+### Why UsageStatsManager?
+
+Initially, this library used AccessibilityEvent callbacks to detect app changes. However, this approach had reliability issues and raised concerns about excessive accessibility API usage for Play Store compliance.
+
+The current implementation uses UsageStatsManager polling, which:
+- Provides reliable foreground app detection
+- Reduces dependency on accessibility-specific APIs
+- Better aligns with Play Store policies for digital wellbeing apps
+- Offers better compatibility across device manufacturers
+
+### Permissions Required
+
+| Permission | Purpose | Request Method |
+|------------|---------|----------------|
+| Accessibility Service | Display system overlays, detect blocking context | `requestAccessibilityPermission()` |
+| Draw Over Apps | Show blocking overlay on top of blocked apps | `requestOverlayPermission()` |
+| Usage Access | Monitor foreground app via UsageStatsManager | `requestUsageAccessPermission()` |
+
+All three permissions must be granted by the user in system settings.
+
+## Comparison with iOS DeviceActivity
+
+This library aims for API parity with [react-native-device-activity](https://github.com/kingstinct/react-native-device-activity) for iOS. Key differences:
+
+| Feature | iOS (DeviceActivity) | Android (This Package) |
+|---------|---------------------|------------------------|
+| API Style | Shield configuration, Family Controls | Session-based blocking with style config |
+| Permission Model | Screen Time API | Accessibility + Overlay + Usage Access |
+| Enforcement | System-level, unbreakable | Overlay-based, can be dismissed (configurable) |
+| App Detection | Native API | UsageStatsManager polling |
 
 ## License
 
@@ -232,4 +342,9 @@ MIT
 
 ## Contributing
 
-Contributions are welcome! Please see the main repository README for development setup.
+Contributions are welcome! This package will be open-sourced soon. Please ensure:
+
+- All public APIs are documented in this README
+- TypeScript types are updated for any native module changes
+- The example app demonstrates new features
+- Code follows the project's style guide (see CLAUDE.md)

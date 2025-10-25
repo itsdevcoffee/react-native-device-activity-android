@@ -36,7 +36,4 @@ rootProject.name = 'Device Activity Android Demo'
 expoAutolinking.useExpoVersionCatalog()
 
 include ':app'
-include ':breakrr_react-native-device-activity-android'
-project(':breakrr_react-native-device-activity-android').projectDir = new File(rootProject.projectDir, '../../../packages/device-activity-android/android')
-
 includeBuild(expoAutolinking.reactNativeGradlePlugin)

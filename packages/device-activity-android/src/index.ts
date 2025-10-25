@@ -133,6 +133,30 @@ const DeviceActivityAndroid = {
   },
 
   /**
+   * Get list of installed user-facing applications.
+   * Filters out system apps and returns only apps with launcher activities.
+   * Includes updated system apps (like pre-installed apps from Play Store).
+   *
+   * @param includeIcons - Whether to include base64-encoded app icons (default: false)
+   * @returns Promise resolving to array of installed apps
+   *
+   * @example
+   * ```ts
+   * const apps = await DeviceActivityAndroid.getInstalledApps(true)
+   * console.log(`Found ${apps.length} apps`)
+   * ```
+   */
+  getInstalledApps(includeIcons: boolean = false): Promise<
+    Array<{
+      packageName: string
+      name: string
+      icon?: string
+    }>
+  > {
+    return nativeModule.getInstalledApps(includeIcons)
+  },
+
+  /**
    * Add a listener for block events.
    * Events include: block_shown, block_dismissed, app_attempt, service_state
    *

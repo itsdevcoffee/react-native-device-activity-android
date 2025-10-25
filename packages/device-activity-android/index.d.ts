@@ -45,6 +45,15 @@ declare const DeviceActivityAndroid: {
   stopAllSessions(): Promise<void>
   getCurrentForegroundApp(): Promise<ForegroundApp>
   isServiceRunning(): Promise<boolean>
+  getInstalledApps(
+    includeIcons?: boolean
+  ): Promise<
+    Array<{
+      packageName: string
+      name: string
+      icon?: string
+    }>
+  >
   addListener(cb: (e: BlockEvent) => void): { remove(): void }
 }
 
