@@ -1,0 +1,49 @@
+{
+  "name": "@breakrr/react-native-device-activity-android",
+  "version": "0.1.0",
+  "description": "React Native Device Activity for Android - Screen blocking functionality using Accessibility Service",
+  "main": "lib/index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepare": "yarn build"
+  },
+  "keywords": [
+    "react-native",
+    "expo",
+    "android",
+    "device-activity",
+    "screen-time",
+    "accessibility",
+    "focus",
+    "digital-wellbeing"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/breakrr/react-native-device-activity-android.git",
+    "directory": "packages/device-activity-android"
+  },
+  "author": "Breakrr",
+  "license": "MIT",
+  "peerDependencies": {
+    "expo": ">=54.0.0",
+    "react": "*",
+    "react-native": "*"
+  },
+  "devDependencies": {
+    "typescript": "~5.3.3"
+  },
+  "expo": {
+    "plugin": "./plugin/app.plugin.js"
+  },
+  "files": [
+    "lib",
+    "android",
+    "plugin",
+    "index.d.ts",
+    "app.plugin.js",
+    "react-native.config.js"
+  ],
+  "react-native": "lib/index.js"
+}

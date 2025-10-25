@@ -69,3 +69,9 @@ data/posthog/
 
 # Claude Code context files
 .claude/
+lib/
+
+# Prevent root-level native directories (monorepo - only in apps/example)
+/android
+/ios
+/app.json

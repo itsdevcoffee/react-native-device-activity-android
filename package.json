@@ -1,0 +1,39 @@
+{
+  "name": "react-native-device-activity-android-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
+    "typecheck": "yarn workspaces foreach -A run typecheck",
+    "android": "yarn workspace example android",
+    "ios": "yarn workspace example ios"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.3.3"
+  },
+  "resolutions": {
+    "@types/react": "~19.0.0",
+    "@types/react-native": "~0.73.0"
+  },
+  "packageManager": "yarn@1.22.19",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "expo": "~54.0.19",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  }
+}

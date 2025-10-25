@@ -1,0 +1,2 @@
+// Entry point - delegates to example app
+export { default } from './apps/example/index';
