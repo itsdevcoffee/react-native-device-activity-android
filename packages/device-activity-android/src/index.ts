@@ -138,22 +138,58 @@ const DeviceActivityAndroid = {
    * Includes updated system apps (like pre-installed apps from Play Store).
    *
    * @param includeIcons - Whether to include base64-encoded app icons (default: false)
-   * @returns Promise resolving to array of installed apps
+   * @returns Promise resolving to array of installed apps with category metadata
    *
    * @example
    * ```ts
    * const apps = await DeviceActivityAndroid.getInstalledApps(true)
    * console.log(`Found ${apps.length} apps`)
+   * console.log(`First app category: ${apps[0].category}`)
    * ```
    */
   getInstalledApps(includeIcons: boolean = false): Promise<
     Array<{
       packageName: string
       name: string
+      category: number
       icon?: string
     }>
   > {
     return nativeModule.getInstalledApps(includeIcons)
+  },
+
+  /**
+   * DEBUG: Get comprehensive metadata for all installed apps.
+   * Returns extensive metadata including version, install dates, categories, paths, etc.
+   * Use this to explore available data and determine what to expose in the public API.
+   *
+   * @returns Promise resolving to array of app metadata objects
+   *
+   * @example
+   * ```ts
+   * const metadata = await DeviceActivityAndroid.getAppMetadataDebug()
+   * console.log(JSON.stringify(metadata, null, 2))
+   * ```
+   */
+  getAppMetadataDebug(): Promise<
+    Array<{
+      packageName: string
+      name: string
+      versionName?: string
+      versionCode?: string
+      firstInstallTime?: number
+      lastUpdateTime?: number
+      isSystemApp: boolean
+      isUpdatedSystemApp: boolean
+      enabled: boolean
+      hasLauncherActivity: boolean
+      sourceDir: string
+      dataDir: string
+      uid: number
+      category?: number
+    }>
+  > {
+    return nativeModule.getAppMetadataDebug()
   },
 
   /**
@@ -193,3 +229,14 @@ export type {
   ForegroundApp,
   BlockEvent,
 }
+
+// Re-export app category utilities
+export {
+  AppCategory,
+  APP_CATEGORY_LABELS,
+  getCategoryLabel,
+  groupAppsByCategory,
+  getCategoryCounts,
+  getCategoryLabelWithCount,
+  CATEGORY_DISPLAY_ORDER,
+} from './appCategories'

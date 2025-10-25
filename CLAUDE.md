@@ -147,18 +147,22 @@ Claude must **not**:
 
 ## 📚 Context7 MCP Integration (for Documentation)
 
+**PRIORITY: Always use Context7 MCP FIRST before WebSearch.**
+
 Whenever Claude requires **latest API documentation or package version info**, it must:
 
-- Use **Context7 MCP** to query official or canonical sources (Expo SDK, React Native, Android API, Gradle, etc.).
-- Reference it explicitly in reasoning (e.g. “Checked via Context7 MCP: Expo SDK 52 requires Gradle 8.6+”).
+- **ALWAYS try Context7 MCP first** to query official or canonical sources (Expo SDK, React Native, Android API, Gradle, etc.).
+- Reference it explicitly in reasoning (e.g. "Checked via Context7 MCP: Expo SDK 52 requires Gradle 8.6+").
 - Prefer up-to-date MCP data over cached assumptions or training data.
+- **Only use WebSearch as fallback** when Context7 doesn't have the information or returns insufficient results.
 - Use MCP lookups for:
   - New Expo or React Native SDK releases
   - Android permission or manifest rule changes
+  - Android SDK constants and enum values (e.g., ApplicationInfo.CATEGORY_*)
   - Gradle/Kotlin DSL updates
   - Play Store policy documentation
 
-This ensures generated code always targets the latest stable versions.
+This ensures generated code always targets the latest stable versions and uses authoritative sources.
 
 ---
 
@@ -188,12 +192,30 @@ Claude should ensure the example app demonstrates:
 3. Seeing a visual block overlay when opening a blocked app.
 4. Logging events in-app (`block_shown`, `app_attempt`, etc.).
 
-The example app should run via:
+### Running the Example App
+
+**CRITICAL**: Claude must **NEVER** run the Expo dev server or build commands automatically.
+
+When testing is needed:
+1. **Ask the user** to run the server/build commands manually
+2. **Request** that the user paste logs/output back
+3. **Wait** for user-provided feedback before proceeding
+
+Commands the user will run:
 ```bash
 cd apps/example
 expo prebuild -p android
 expo run:android
-````
+```
+
+**Do NOT use background tasks for:**
+- `expo run:android`
+- `expo start`
+- `npx expo start`
+- `adb logcat`
+- Any long-running server or monitoring process
+
+The user maintains full control over when and how the dev server runs.
 
 ---
 

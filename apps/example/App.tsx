@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   StyleSheet,
   Text,
@@ -7,7 +7,7 @@ import {
   TextInput,
   Alert,
   Modal,
-  FlatList,
+  SectionList,
   Image,
   ActivityIndicator,
   ScrollView,
@@ -15,12 +15,23 @@ import {
 import { StatusBar } from 'expo-status-bar'
 import DeviceActivityAndroid, {
   type PermissionsStatus,
+  groupAppsByCategory,
+  getCategoryLabel,
+  CATEGORY_DISPLAY_ORDER,
+  AppCategory,
 } from '@breakrr/react-native-device-activity-android'
 
 type InstalledApp = {
   packageName: string
   name: string
   icon?: string
+  category: number
+}
+
+type AppSection = {
+  title: string
+  categoryId: AppCategory
+  data: InstalledApp[]
 }
 
 export default function App() {
@@ -36,6 +47,7 @@ export default function App() {
   const [filteredApps, setFilteredApps] = useState<InstalledApp[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loadingApps, setLoadingApps] = useState(false)
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<AppCategory>>(new Set())
 
   useEffect(() => {
     checkPermissions()
@@ -93,12 +105,65 @@ export default function App() {
     setFilteredApps(filtered)
   }
 
+  // Group apps by category for sectioned display
+  const appSections = useMemo<AppSection[]>(() => {
+    const grouped = groupAppsByCategory(filteredApps)
+    const sections: AppSection[] = []
+
+    // Sort categories by display order
+    for (const categoryId of CATEGORY_DISPLAY_ORDER) {
+      const apps = grouped.get(categoryId) || []
+      if (apps.length > 0) {
+        const label = getCategoryLabel(categoryId)
+        sections.push({
+          title: `${label} (${apps.length})`,
+          categoryId,
+          data: apps.sort((a, b) => a.name.localeCompare(b.name)),
+        })
+      }
+    }
+
+    return sections
+  }, [filteredApps])
+
   const toggleAppSelection = (packageName: string) => {
     setBlockedPackages((prev) =>
       prev.includes(packageName)
         ? prev.filter((p) => p !== packageName)
         : [...prev, packageName]
     )
+  }
+
+  const toggleCategory = (categoryId: AppCategory) => {
+    setCollapsedCategories((prev) => {
+      const next = new Set(prev)
+      if (next.has(categoryId)) {
+        next.delete(categoryId)
+      } else {
+        next.add(categoryId)
+      }
+      return next
+    })
+  }
+
+  const selectAllInCategory = (apps: InstalledApp[]) => {
+    const packageNames = apps.map((app) => app.packageName)
+    setBlockedPackages((prev) => {
+      const set = new Set([...prev, ...packageNames])
+      return Array.from(set)
+    })
+  }
+
+  const unselectAllInCategory = (apps: InstalledApp[]) => {
+    const packageNames = new Set(apps.map((app) => app.packageName))
+    setBlockedPackages((prev) => prev.filter((pkg) => !packageNames.has(pkg)))
+  }
+
+  const getCategorySelectionState = (apps: InstalledApp[]): 'all' | 'some' | 'none' => {
+    const selectedCount = apps.filter((app) => blockedPackages.includes(app.packageName)).length
+    if (selectedCount === 0) return 'none'
+    if (selectedCount === apps.length) return 'all'
+    return 'some'
   }
 
   const openAppPicker = () => {
@@ -148,6 +213,22 @@ export default function App() {
       Alert.alert('Success', 'Focus session stopped')
     } catch (error) {
       Alert.alert('Error', 'Failed to stop session')
+    }
+  }
+
+  const exportAppMetadata = async () => {
+    try {
+      const metadata = await DeviceActivityAndroid.getAppMetadataDebug()
+      const json = JSON.stringify(metadata, null, 2)
+      console.log('📦 App Metadata JSON:')
+      console.log(json)
+      Alert.alert(
+        'Exported!',
+        `Exported ${metadata.length} apps to console logs. Check the terminal/logs for the JSON output.`
+      )
+    } catch (error) {
+      Alert.alert('Error', 'Failed to export app metadata')
+      console.error(error)
     }
   }
 
@@ -305,6 +386,17 @@ export default function App() {
             <Text style={styles.activeText}>✓ Session Active</Text>
           )}
         </View>
+
+        {/* Debug Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Debug</Text>
+          <TouchableOpacity
+            style={[styles.button, styles.buttonGray]}
+            onPress={exportAppMetadata}
+          >
+            <Text style={styles.buttonText}>Export App Metadata JSON</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       {/* App Picker Modal */}
@@ -336,17 +428,86 @@ export default function App() {
               <ActivityIndicator size="large" color="#2196F3" />
               <Text style={styles.loadingText}>Loading apps...</Text>
             </View>
-          ) : filteredApps.length === 0 ? (
+          ) : appSections.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>
                 {searchQuery ? 'No apps found' : 'No apps available'}
               </Text>
             </View>
           ) : (
-            <FlatList
-              data={filteredApps}
-              renderItem={renderAppItem}
+            <SectionList
+              sections={appSections}
+              renderItem={({ item, section }) => {
+                const isCollapsed = collapsedCategories.has(section.categoryId)
+                if (isCollapsed) return null
+                return renderAppItem({ item })
+              }}
+              renderSectionHeader={({ section }) => {
+                const isCollapsed = collapsedCategories.has(section.categoryId)
+                const selectionState = getCategorySelectionState(section.data)
+
+                return (
+                  <View style={styles.categorySection}>
+                    <TouchableOpacity
+                      style={styles.categoryHeader}
+                      onPress={() => toggleCategory(section.categoryId)}
+                      activeOpacity={0.6}
+                    >
+                      <View style={styles.categoryLeft}>
+                        <View style={[
+                          styles.categoryCheckbox,
+                          selectionState === 'all' && styles.categoryCheckboxFull,
+                          selectionState === 'some' && styles.categoryCheckboxPartial,
+                        ]}
+                        onTouchEnd={(e) => {
+                          e.stopPropagation()
+                        }}>
+                          {selectionState === 'all' && (
+                            <Text style={styles.categoryCheckmark}>✓</Text>
+                          )}
+                        </View>
+                        <Text style={styles.categoryTitle}>
+                          {getCategoryLabel(section.categoryId)}
+                        </Text>
+                      </View>
+                      <View style={styles.categoryRight}>
+                        <Text style={styles.categoryCount}>{section.data.length}</Text>
+                        <Text style={[styles.categoryChevron, isCollapsed && styles.categoryChevronCollapsed]}>
+                          ›
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    {!isCollapsed && (
+                      <TouchableOpacity
+                        style={styles.selectAllRow}
+                        onPress={() => {
+                          if (selectionState === 'all') {
+                            unselectAllInCategory(section.data)
+                          } else {
+                            selectAllInCategory(section.data)
+                          }
+                        }}
+                        activeOpacity={0.6}
+                      >
+                        <Text style={styles.selectAllLabel}>
+                          {selectionState === 'all' ? 'Deselect All' : 'Select All'}
+                        </Text>
+                        <View style={[
+                          styles.selectAllCircle,
+                          selectionState !== 'none' && styles.selectAllCircleActive,
+                        ]}>
+                          {selectionState !== 'none' && (
+                            <View style={styles.selectAllDot} />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )
+              }}
               keyExtractor={(item) => item.packageName}
+              stickySectionHeadersEnabled={false}
               style={styles.appList}
             />
           )}
@@ -407,6 +568,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F44336',
     flex: 1,
     marginLeft: 5,
+  },
+  buttonGray: {
+    backgroundColor: '#757575',
   },
   buttonDisabled: {
     backgroundColor: '#ccc',
@@ -473,7 +637,7 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: '#F2F2F7',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -496,7 +660,7 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     padding: 16,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#F2F2F7',
   },
   searchInput: {
     backgroundColor: 'white',
@@ -512,12 +676,14 @@ const styles = StyleSheet.create({
   appItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: 'white',
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E5E5EA',
   },
   appItemSelected: {
-    backgroundColor: '#E8F5E9',
+    backgroundColor: '#F2F2F7',
   },
   appIcon: {
     width: 48,
@@ -552,13 +718,13 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#007AFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
   checkmarkText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
   },
   loadingContainer: {
@@ -579,5 +745,108 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: '#757575',
+  },
+  categorySection: {
+    backgroundColor: 'white',
+    marginTop: 16,
+    borderRadius: 10,
+    marginHorizontal: 16,
+    overflow: 'hidden',
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: 'white',
+  },
+  categoryLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  categoryCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E5E5EA',
+    backgroundColor: 'white',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  categoryCheckboxFull: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  categoryCheckboxPartial: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+    opacity: 0.6,
+  },
+  categoryCheckmark: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  categoryTitle: {
+    fontSize: 17,
+    color: '#000',
+    fontWeight: '400',
+  },
+  categoryRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  categoryCount: {
+    fontSize: 17,
+    color: '#8E8E93',
+    marginRight: 8,
+  },
+  categoryChevron: {
+    fontSize: 20,
+    color: '#C7C7CC',
+    fontWeight: '600',
+    transform: [{ rotate: '90deg' }],
+  },
+  categoryChevronCollapsed: {
+    transform: [{ rotate: '0deg' }],
+  },
+  selectAllRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: '#F9F9F9',
+    borderTopWidth: 0.5,
+    borderTopColor: '#E5E5EA',
+  },
+  selectAllLabel: {
+    fontSize: 17,
+    color: '#007AFF',
+    fontWeight: '400',
+  },
+  selectAllCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#E5E5EA',
+    backgroundColor: 'white',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectAllCircleActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  selectAllDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'white',
   },
 })

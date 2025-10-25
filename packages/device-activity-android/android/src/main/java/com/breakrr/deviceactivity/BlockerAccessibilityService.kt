@@ -6,6 +6,8 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -13,6 +15,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Button
 import android.widget.TextView
+import android.widget.ImageView
 import android.widget.FrameLayout
 
 /**
@@ -263,6 +266,35 @@ class BlockerAccessibilityService : AccessibilityService() {
         orientation = android.widget.LinearLayout.VERTICAL
         gravity = android.view.Gravity.CENTER
         setPadding(40, 40, 40, 40)
+      }
+
+      // Get app icon and add it with iOS-style grayscale treatment
+      try {
+        val packageManager = applicationContext.packageManager
+        val appIcon = packageManager.getApplicationIcon(blockedPackage)
+
+        val iconSize = (120 * resources.displayMetrics.density).toInt()
+        val iconMargin = (32 * resources.displayMetrics.density).toInt()
+
+        val iconView = ImageView(this).apply {
+          setImageDrawable(appIcon)
+
+          // Apply grayscale filter for iOS-style appearance
+          val colorMatrix = ColorMatrix().apply {
+            setSaturation(0f) // Remove all color (grayscale)
+          }
+          colorFilter = ColorMatrixColorFilter(colorMatrix)
+
+          // Set alpha for darkened appearance
+          alpha = 0.4f // Darken the icon
+        }
+
+        val iconParams = android.widget.LinearLayout.LayoutParams(iconSize, iconSize).apply {
+          bottomMargin = iconMargin
+        }
+        linearLayout.addView(iconView, iconParams)
+      } catch (e: Exception) {
+        android.util.Log.w("BlockerService", "Could not load app icon for $blockedPackage", e)
       }
 
       // Add title

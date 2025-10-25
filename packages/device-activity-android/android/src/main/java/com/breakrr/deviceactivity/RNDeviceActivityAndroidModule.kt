@@ -242,7 +242,8 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
       data class AppData(
         val packageName: String,
         val name: String,
-        val icon: String?
+        val icon: String?,
+        val category: Int
       )
 
       val appsList = mutableListOf<AppData>()
@@ -253,33 +254,56 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
       android.util.Log.d("RNDeviceActivity", "Total installed apps: ${installedApps.size}")
 
       for (appInfo in installedApps) {
-        // Filter criteria:
-        // - User apps: include all (they were explicitly installed by the user)
-        // - System apps: only include if updated AND have launcher (like Chrome, YouTube from Play Store)
+        val packageName = appInfo.packageName
+
+        // Filter 1: Exclude the current app (don't show the app itself in the selector)
+        if (packageName == reactContext.packageName) {
+          continue
+        }
+
+        // Filter 2: Exclude known system utilities
+        val systemUtilities = setOf(
+          "com.android.settings",
+          "com.android.documentsui",
+          "com.android.packageinstaller",
+          "com.google.android.packageinstaller"
+        )
+        if (packageName in systemUtilities) {
+          continue
+        }
+
+        // Filter 3: Exclude Google core services
+        if (packageName.startsWith("com.google.android.gms") ||
+            packageName.startsWith("com.google.android.gsf")) {
+          continue
+        }
+
+        // Filter 4: Must have a launcher activity (filters out background services automatically)
+        // This uses getLaunchIntentForPackage() which returns null for apps without launcher
+        val launchIntent = try {
+          packageManager.getLaunchIntentForPackage(packageName)
+        } catch (e: Exception) {
+          null
+        }
+
+        if (launchIntent == null) {
+          continue
+        }
+
+        // Filter 5: User app OR updated system app
         val isUserApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0
         val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
 
-        // For user apps, we include them all since they were explicitly installed
-        // For system apps, check if they have a launcher (updated system apps only)
-        val shouldInclude = if (isUserApp) {
-          // User app - include it
-          true
-        } else if (isUpdatedSystemApp) {
-          // Updated system app - check for launcher
+        if (isUserApp || isUpdatedSystemApp) {
           try {
-            packageManager.getLaunchIntentForPackage(appInfo.packageName) != null
-          } catch (e: Exception) {
-            false
-          }
-        } else {
-          // Regular system app - skip it
-          false
-        }
-
-        if (shouldInclude) {
-          try {
-            val packageName = appInfo.packageName
             val name = appInfo.loadLabel(packageManager).toString()
+
+            // Get category (API 26+)
+            val category = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+              appInfo.category
+            } else {
+              -1 // UNDEFINED for older Android versions
+            }
 
             // Optionally include icon as base64
             val icon = if (includeIcons) {
@@ -293,7 +317,7 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
               null
             }
 
-            appsList.add(AppData(packageName, name, icon))
+            appsList.add(AppData(packageName, name, icon, category))
           } catch (e: Exception) {
             // Skip apps that fail to load
             android.util.Log.w("RNDeviceActivity", "Failed to load app: ${appInfo.packageName}", e)
@@ -312,6 +336,7 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
         val appMap = WritableNativeMap()
         appMap.putString("packageName", appData.packageName)
         appMap.putString("name", appData.name)
+        appMap.putInt("category", appData.category)
 
         if (includeIcons) {
           if (appData.icon != null) {
@@ -327,6 +352,110 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
       promise.resolve(apps)
     } catch (e: Exception) {
       promise.reject("ERROR", "Failed to get installed apps: ${e.message}", e)
+    }
+  }
+
+  /**
+   * Debug method: Export metadata ONLY for apps that pass our filtering.
+   * Returns comprehensive metadata for apps that appear in the app selector.
+   */
+  @ReactMethod
+  fun getAppMetadataDebug(promise: Promise) {
+    try {
+      val packageManager = reactContext.packageManager
+      val installedApps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+
+      val appsMetadata = WritableNativeArray()
+
+      for (appInfo in installedApps) {
+        val packageName = appInfo.packageName
+
+        // Apply same filtering as getInstalledApps()
+        // Filter 1: Exclude the current app
+        if (packageName == reactContext.packageName) continue
+
+        // Filter 2: Exclude known system utilities
+        val systemUtilities = setOf(
+          "com.android.settings",
+          "com.android.documentsui",
+          "com.android.packageinstaller",
+          "com.google.android.packageinstaller"
+        )
+        if (packageName in systemUtilities) continue
+
+        // Filter 3: Exclude Google core services
+        if (packageName.startsWith("com.google.android.gms") ||
+            packageName.startsWith("com.google.android.gsf")) continue
+
+        // Filter 4: Must have a launcher activity
+        val launchIntent = try {
+          packageManager.getLaunchIntentForPackage(packageName)
+        } catch (e: Exception) {
+          null
+        }
+        if (launchIntent == null) continue
+
+        // Filter 5: User app OR updated system app
+        val isUserApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0
+        val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+        if (!isUserApp && !isUpdatedSystemApp) continue
+
+        // If we got here, this app passes all filters - include its metadata
+        try {
+          val metadata = WritableNativeMap()
+
+          // Basic info
+          metadata.putString("packageName", appInfo.packageName)
+          metadata.putString("name", appInfo.loadLabel(packageManager).toString())
+
+          // Package info (for version, install date, etc.)
+          val packageInfo = try {
+            packageManager.getPackageInfo(appInfo.packageName, 0)
+          } catch (e: Exception) {
+            null
+          }
+
+          if (packageInfo != null) {
+            metadata.putString("versionName", packageInfo.versionName ?: "unknown")
+            metadata.putString("versionCode", packageInfo.versionCode.toString())
+            metadata.putDouble("firstInstallTime", packageInfo.firstInstallTime.toDouble())
+            metadata.putDouble("lastUpdateTime", packageInfo.lastUpdateTime.toDouble())
+          }
+
+          // Flags
+          metadata.putBoolean("isSystemApp", (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0)
+          metadata.putBoolean("isUpdatedSystemApp", (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0)
+          metadata.putBoolean("enabled", appInfo.enabled)
+
+          // Launcher check
+          val hasLauncher = try {
+            packageManager.getLaunchIntentForPackage(appInfo.packageName) != null
+          } catch (e: Exception) {
+            false
+          }
+          metadata.putBoolean("hasLauncherActivity", hasLauncher)
+
+          // Paths
+          metadata.putString("sourceDir", appInfo.sourceDir)
+          metadata.putString("dataDir", appInfo.dataDir)
+
+          // UID
+          metadata.putInt("uid", appInfo.uid)
+
+          // Category (Android 8.0+)
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            metadata.putInt("category", appInfo.category)
+          }
+
+          appsMetadata.pushMap(metadata)
+        } catch (e: Exception) {
+          android.util.Log.w("RNDeviceActivity", "Failed to get metadata for: ${appInfo.packageName}", e)
+        }
+      }
+
+      promise.resolve(appsMetadata)
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Failed to get app metadata: ${e.message}", e)
     }
   }
 
