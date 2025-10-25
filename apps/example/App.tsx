@@ -19,7 +19,7 @@ export default function App() {
     usageAccessEnabled: false,
   })
   const [blockedPackages, setBlockedPackages] = useState(
-    'com.instagram.android,com.twitter.android'
+    'com.google.android.youtube'
   )
   const [sessionActive, setSessionActive] = useState(false)
 

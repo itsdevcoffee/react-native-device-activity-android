@@ -27,6 +27,9 @@ class BlockerAccessibilityService : AccessibilityService() {
   private var overlayView: FrameLayout? = null
   private var windowManager: WindowManager? = null
   private var isOverlayShowing = false
+  private var lastDismissedPackage: String? = null
+  private var lastDismissedTime: Long = 0
+  private val DISMISS_COOLDOWN_MS = 3000L // 3 seconds cooldown
 
   companion object {
     var instance: BlockerAccessibilityService? = null
@@ -137,6 +140,17 @@ class BlockerAccessibilityService : AccessibilityService() {
       android.util.Log.d("BlockerService", "Active sessions: ${sessions.size}")
 
       if (shouldBlock && sessionId != null) {
+        // Check if this package was recently dismissed (cooldown period)
+        val now = System.currentTimeMillis()
+        val isInCooldown = packageName == lastDismissedPackage &&
+                          (now - lastDismissedTime) < DISMISS_COOLDOWN_MS
+
+        if (isInCooldown) {
+          android.util.Log.d("BlockerService", "Package $packageName in cooldown, skipping overlay")
+          hideOverlay()
+          return
+        }
+
         android.util.Log.d("BlockerService", "Showing overlay for $packageName")
         showOverlay(sessionId, packageName)
         // Send event to React Native
@@ -215,8 +229,13 @@ class BlockerAccessibilityService : AccessibilityService() {
         setBackgroundColor(0xFF2196F3.toInt())
         setTextColor(0xFFFFFFFF.toInt())
         setOnClickListener {
+          // Record dismissal for cooldown
+          lastDismissedPackage = blockedPackage
+          lastDismissedTime = System.currentTimeMillis()
+
           hideOverlay()
           RNDeviceActivityAndroidModule.sendEvent("block_dismissed", blockedPackage, sessionId)
+
           // Return to home screen
           val homeIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
