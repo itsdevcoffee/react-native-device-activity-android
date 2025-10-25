@@ -19,7 +19,7 @@ export default function App() {
     usageAccessEnabled: false,
   })
   const [blockedPackages, setBlockedPackages] = useState(
-    'com.google.android.youtube'
+    'com.google.android.youtube,com.android.chrome'
   )
   const [sessionActive, setSessionActive] = useState(false)
 
