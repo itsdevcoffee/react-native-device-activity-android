@@ -42,6 +42,7 @@ class BlockerAccessibilityService : AccessibilityService() {
       if (style != null) {
         shieldStyles[session.id] = style
       }
+      android.util.Log.d("BlockerService", "Session added: ${session.id}, blocked: ${session.blocked}")
     }
 
     /**
@@ -95,12 +96,21 @@ class BlockerAccessibilityService : AccessibilityService() {
     super.onCreate()
     instance = this
     windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    android.util.Log.d("BlockerService", "Accessibility service created")
+  }
+
+  override fun onServiceConnected() {
+    super.onServiceConnected()
+    android.util.Log.d("BlockerService", "Accessibility service connected and ready")
+    RNDeviceActivityAndroidModule.sendServiceStateEvent(true)
   }
 
   override fun onDestroy() {
     super.onDestroy()
     instance = null
     hideOverlay()
+    android.util.Log.d("BlockerService", "Accessibility service destroyed")
+    RNDeviceActivityAndroidModule.sendServiceStateEvent(false)
   }
 
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -109,6 +119,8 @@ class BlockerAccessibilityService : AccessibilityService() {
     // Listen for window state changes (app switches)
     if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
       val packageName = event.packageName?.toString() ?: return
+
+      android.util.Log.d("BlockerService", "Window changed to: $packageName")
 
       // Ignore our own package and system UI
       if (packageName == applicationContext.packageName ||
@@ -121,7 +133,11 @@ class BlockerAccessibilityService : AccessibilityService() {
       // Check if this package should be blocked
       val (shouldBlock, sessionId) = shouldBlockPackage(packageName)
 
+      android.util.Log.d("BlockerService", "Should block $packageName? $shouldBlock (session: $sessionId)")
+      android.util.Log.d("BlockerService", "Active sessions: ${sessions.size}")
+
       if (shouldBlock && sessionId != null) {
+        android.util.Log.d("BlockerService", "Showing overlay for $packageName")
         showOverlay(sessionId, packageName)
         // Send event to React Native
         RNDeviceActivityAndroidModule.sendEvent("app_attempt", packageName, sessionId)
@@ -158,26 +174,46 @@ class BlockerAccessibilityService : AccessibilityService() {
         height = WindowManager.LayoutParams.MATCH_PARENT
       }
 
-      // Create overlay view
-      val view = FrameLayout(this)
-      view.setBackgroundColor(0xE6000000.toInt()) // Semi-transparent black
+      // Create overlay container
+      val container = FrameLayout(this)
+      container.setBackgroundColor(0xE6000000.toInt()) // Semi-transparent black
 
       // Get shield style
       val style = getShieldStyle(sessionId)
 
-      // Add text and button (simplified - in real app would use proper layout)
+      // Create vertical LinearLayout for stacking views
+      val linearLayout = android.widget.LinearLayout(this).apply {
+        orientation = android.widget.LinearLayout.VERTICAL
+        gravity = android.view.Gravity.CENTER
+        setPadding(40, 40, 40, 40)
+      }
+
+      // Add title
       val titleView = TextView(this).apply {
         text = style.title
-        textSize = 24f
+        textSize = 28f
         setTextColor(0xFFFFFFFF.toInt())
+        gravity = android.view.Gravity.CENTER
+        setPadding(0, 0, 0, 24)
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
       }
+
+      // Add message
       val messageView = TextView(this).apply {
         text = style.message
-        textSize = 16f
+        textSize = 18f
         setTextColor(0xFFCCCCCC.toInt())
+        gravity = android.view.Gravity.CENTER
+        setPadding(0, 0, 0, 48)
       }
+
+      // Add button
       val buttonView = Button(this).apply {
         text = style.ctaText
+        textSize = 16f
+        setPadding(48, 24, 48, 24)
+        setBackgroundColor(0xFF2196F3.toInt())
+        setTextColor(0xFFFFFFFF.toInt())
         setOnClickListener {
           hideOverlay()
           RNDeviceActivityAndroidModule.sendEvent("block_dismissed", blockedPackage, sessionId)
@@ -190,17 +226,27 @@ class BlockerAccessibilityService : AccessibilityService() {
         }
       }
 
-      view.addView(titleView)
-      view.addView(messageView)
-      view.addView(buttonView)
+      linearLayout.addView(titleView)
+      linearLayout.addView(messageView)
+      linearLayout.addView(buttonView)
 
-      overlayView = view
-      windowManager?.addView(view, layoutParams)
+      // Add LinearLayout centered in container
+      val contentParams = FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams.WRAP_CONTENT,
+        FrameLayout.LayoutParams.WRAP_CONTENT
+      ).apply {
+        gravity = android.view.Gravity.CENTER
+      }
+      container.addView(linearLayout, contentParams)
+
+      overlayView = container
+      windowManager?.addView(container, layoutParams)
       isOverlayShowing = true
 
       RNDeviceActivityAndroidModule.sendEvent("block_shown", blockedPackage, sessionId)
     } catch (e: Exception) {
       // Failed to show overlay - log error
+      android.util.Log.e("BlockerService", "Failed to show overlay", e)
       e.printStackTrace()
     }
   }
