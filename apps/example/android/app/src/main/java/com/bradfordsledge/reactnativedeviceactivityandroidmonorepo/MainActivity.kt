@@ -1,4 +1,4 @@
-package com.breakrr.deviceactivityexample
+package com.bradfordsledge.reactnativedeviceactivityandroidmonorepo
 
 import android.os.Build
 import android.os.Bundle

@@ -32,6 +32,7 @@
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="exp+device-activity-android-example"/>
+        <data android:scheme="deviceactivity"/>
       </intent-filter>
     </activity>
   </application>
