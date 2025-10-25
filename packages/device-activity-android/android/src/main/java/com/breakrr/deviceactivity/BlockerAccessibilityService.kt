@@ -1,11 +1,14 @@
 package com.breakrr.deviceactivity
 
 import android.accessibilityservice.AccessibilityService
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
-import android.view.LayoutInflater
+import android.os.Handler
+import android.os.Looper
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Button
@@ -15,9 +18,9 @@ import android.widget.FrameLayout
 /**
  * Accessibility Service that monitors app switches and shows blocking overlay.
  *
- * This service listens for TYPE_WINDOW_STATE_CHANGED events to detect when
- * the user switches to a different app. If the foreground app is blocked by
- * any active session, it displays a full-screen overlay preventing access.
+ * Uses a hybrid approach:
+ * - UsageStatsManager polling for reliable foreground app detection
+ * - AccessibilityService for overlay permissions
  *
  * IMPORTANT: This service requires explicit user consent in Android Settings.
  * See Google Play policy on Accessibility Service usage.
@@ -29,7 +32,11 @@ class BlockerAccessibilityService : AccessibilityService() {
   private var isOverlayShowing = false
   private var lastDismissedPackage: String? = null
   private var lastDismissedTime: Long = 0
-  private val DISMISS_COOLDOWN_MS = 3000L // 3 seconds cooldown
+  private val DISMISS_COOLDOWN_MS = 2000L // 2 seconds cooldown
+  private var usageStatsManager: UsageStatsManager? = null
+  private val handler = Handler(Looper.getMainLooper())
+  private val checkInterval = 500L // Check every 500ms for responsiveness
+  private var lastForegroundPackage: String? = null
 
   companion object {
     var instance: BlockerAccessibilityService? = null
@@ -82,9 +89,9 @@ class BlockerAccessibilityService : AccessibilityService() {
      */
     fun getShieldStyle(sessionId: String): ShieldStyle {
       return shieldStyles[sessionId] ?: ShieldStyle(
-        title = "App Blocked",
-        message = "This app is currently blocked by your focus session.",
-        ctaText = "Dismiss"
+        title = "Stay Focused",
+        message = "This app is blocked during your focus session.",
+        ctaText = "Return to Focus"
       )
     }
   }
@@ -99,17 +106,22 @@ class BlockerAccessibilityService : AccessibilityService() {
     super.onCreate()
     instance = this
     windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
     android.util.Log.d("BlockerService", "Accessibility service created")
   }
 
   override fun onServiceConnected() {
     super.onServiceConnected()
-    android.util.Log.d("BlockerService", "Accessibility service connected and ready")
+    android.util.Log.d("BlockerService", "Accessibility service connected")
     RNDeviceActivityAndroidModule.sendServiceStateEvent(true)
+
+    // Start polling for foreground app
+    startForegroundAppCheck()
   }
 
   override fun onDestroy() {
     super.onDestroy()
+    stopForegroundAppCheck()
     instance = null
     hideOverlay()
     android.util.Log.d("BlockerService", "Accessibility service destroyed")
@@ -117,53 +129,105 @@ class BlockerAccessibilityService : AccessibilityService() {
   }
 
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-    if (event == null) return
-
-    // Listen for window state changes (app switches)
-    if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-      val packageName = event.packageName?.toString() ?: return
-
-      android.util.Log.d("BlockerService", "Window changed to: $packageName")
-
-      // Ignore our own package and system UI
-      if (packageName == applicationContext.packageName ||
-          packageName == "com.android.systemui") {
-        return
-      }
-
-      currentForegroundPackage = packageName
-
-      // Check if this package should be blocked
-      val (shouldBlock, sessionId) = shouldBlockPackage(packageName)
-
-      android.util.Log.d("BlockerService", "Should block $packageName? $shouldBlock (session: $sessionId)")
-      android.util.Log.d("BlockerService", "Active sessions: ${sessions.size}")
-
-      if (shouldBlock && sessionId != null) {
-        // Check if this package was recently dismissed (cooldown period)
-        val now = System.currentTimeMillis()
-        val isInCooldown = packageName == lastDismissedPackage &&
-                          (now - lastDismissedTime) < DISMISS_COOLDOWN_MS
-
-        if (isInCooldown) {
-          android.util.Log.d("BlockerService", "Package $packageName in cooldown, skipping overlay")
-          hideOverlay()
-          return
-        }
-
-        android.util.Log.d("BlockerService", "Showing overlay for $packageName")
-        showOverlay(sessionId, packageName)
-        // Send event to React Native
-        RNDeviceActivityAndroidModule.sendEvent("app_attempt", packageName, sessionId)
-      } else {
-        hideOverlay()
-      }
-    }
+    // Not using events - relying on UsageStatsManager polling for reliability
   }
 
   override fun onInterrupt() {
     // Called when service is interrupted
     hideOverlay()
+  }
+
+  /**
+   * Get the actual foreground app using UsageStatsManager (ground truth).
+   */
+  private fun getForegroundApp(): String? {
+    try {
+      val now = System.currentTimeMillis()
+      val usageEvents = usageStatsManager?.queryEvents(now - 2000, now)
+      var foregroundApp: String? = null
+
+      usageEvents?.let {
+        val event = UsageEvents.Event()
+        while (it.hasNextEvent()) {
+          it.getNextEvent(event)
+          if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) {
+            foregroundApp = event.packageName
+          }
+        }
+      }
+
+      return foregroundApp
+    } catch (e: Exception) {
+      android.util.Log.e("BlockerService", "Error getting foreground app", e)
+      return null
+    }
+  }
+
+  /**
+   * Periodically check foreground app and show/hide overlay accordingly.
+   */
+  private val foregroundCheckRunnable = object : Runnable {
+    override fun run() {
+      val foregroundPackage = getForegroundApp()
+
+      if (foregroundPackage != null && foregroundPackage != lastForegroundPackage) {
+        lastForegroundPackage = foregroundPackage
+        android.util.Log.d("BlockerService", "Foreground app: $foregroundPackage")
+      }
+
+      if (foregroundPackage != null) {
+        // Ignore system packages and launchers
+        val isLauncher = foregroundPackage.contains("launcher", ignoreCase = true)
+        val isSystemUI = foregroundPackage == "com.android.systemui"
+        val isOurApp = foregroundPackage == applicationContext.packageName
+
+        if (isLauncher || isSystemUI || isOurApp) {
+          // User is on home screen or system UI - clear cooldown and hide overlay
+          if (isLauncher && lastDismissedPackage != null) {
+            android.util.Log.d("BlockerService", "On home screen, clearing cooldown")
+            lastDismissedPackage = null
+            lastDismissedTime = 0
+          }
+          hideOverlay()
+        } else {
+          // Check if this app should be blocked
+          val (shouldBlock, sessionId) = shouldBlockPackage(foregroundPackage)
+
+          if (shouldBlock && sessionId != null) {
+            // Check cooldown
+            val now = System.currentTimeMillis()
+            val isInCooldown = foregroundPackage == lastDismissedPackage &&
+                              (now - lastDismissedTime) < DISMISS_COOLDOWN_MS
+
+            if (!isInCooldown) {
+              if (!isOverlayShowing) {
+                android.util.Log.d("BlockerService", "Blocking $foregroundPackage")
+                showOverlay(sessionId, foregroundPackage)
+                RNDeviceActivityAndroidModule.sendEvent("app_attempt", foregroundPackage, sessionId)
+              }
+            } else {
+              // Still in cooldown, don't show overlay yet
+              hideOverlay()
+            }
+          } else {
+            hideOverlay()
+          }
+        }
+      }
+
+      // Schedule next check
+      handler.postDelayed(this, checkInterval)
+    }
+  }
+
+  private fun startForegroundAppCheck() {
+    android.util.Log.d("BlockerService", "Starting foreground app monitoring")
+    handler.post(foregroundCheckRunnable)
+  }
+
+  private fun stopForegroundAppCheck() {
+    android.util.Log.d("BlockerService", "Stopping foreground app monitoring")
+    handler.removeCallbacks(foregroundCheckRunnable)
   }
 
   /**
@@ -175,7 +239,6 @@ class BlockerAccessibilityService : AccessibilityService() {
     try {
       val layoutParams = WindowManager.LayoutParams().apply {
         type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-          // Android 8.0+: Use TYPE_ACCESSIBILITY_OVERLAY
           WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
         } else {
           @Suppress("DEPRECATION")
@@ -190,7 +253,7 @@ class BlockerAccessibilityService : AccessibilityService() {
 
       // Create overlay container
       val container = FrameLayout(this)
-      container.setBackgroundColor(0xE6000000.toInt()) // Semi-transparent black
+      container.setBackgroundColor(0xE6000000.toInt())
 
       // Get shield style
       val style = getShieldStyle(sessionId)
@@ -264,7 +327,6 @@ class BlockerAccessibilityService : AccessibilityService() {
 
       RNDeviceActivityAndroidModule.sendEvent("block_shown", blockedPackage, sessionId)
     } catch (e: Exception) {
-      // Failed to show overlay - log error
       android.util.Log.e("BlockerService", "Failed to show overlay", e)
       e.printStackTrace()
     }
