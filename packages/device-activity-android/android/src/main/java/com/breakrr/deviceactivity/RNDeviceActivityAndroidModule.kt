@@ -218,6 +218,13 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
   fun stopAllSessions(promise: Promise) {
     try {
       BlockerAccessibilityService.removeAllSessions()
+
+      // Clear persisted sessions
+      SessionStorageHelper.clearSavedSessions(reactContext)
+
+      // Cancel any pending temporary unblock alarms
+      cancelTemporaryUnblockAlarm()
+
       promise.resolve(null)
     } catch (e: Exception) {
       promise.reject("ERROR", "Failed to stop all sessions", e)
@@ -551,6 +558,11 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
       val style = if (styleMap != null) parseShieldStyle(styleMap) else null
       BlockerAccessibilityService.addSession(session, style)
 
+      // Persist session to SharedPreferences for restoration on app restart
+      val currentSessions = BlockerAccessibilityService.sessions
+      val currentStyles = BlockerAccessibilityService.shieldStyles
+      SessionStorageHelper.saveSessions(reactContext, currentSessions, currentStyles)
+
       promise.resolve(null)
     } catch (e: Exception) {
       promise.reject("ERROR", "Failed to block all apps", e)
@@ -565,6 +577,13 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
   fun unblockAllApps(promise: Promise) {
     try {
       BlockerAccessibilityService.removeAllSessions()
+
+      // Clear persisted sessions since all blocking has been removed
+      SessionStorageHelper.clearSavedSessions(reactContext)
+
+      // Cancel any pending temporary unblock alarms
+      cancelTemporaryUnblockAlarm()
+
       promise.resolve(null)
     } catch (e: Exception) {
       promise.reject("ERROR", "Failed to unblock all apps", e)
@@ -667,6 +686,97 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
   }
 
   /**
+   * Temporarily block all apps for a specified duration.
+   * After the duration expires, blocking automatically ends.
+   *
+   * Uses AlarmManager to work even if app is backgrounded or killed.
+   *
+   * @param durationSeconds Duration in seconds to block apps
+   * @param styleMap Optional shield style configuration
+   */
+  @ReactMethod
+  fun temporaryBlock(durationSeconds: Int, styleMap: ReadableMap?, promise: Promise) {
+    try {
+      if (durationSeconds <= 0) {
+        promise.reject("ERROR", "Duration must be greater than 0")
+        return
+      }
+
+      // Calculate end time
+      val endsAt = System.currentTimeMillis() + (durationSeconds * 1000L)
+
+      // Block all apps with the end time using the same logic as blockAllApps
+      // Get all installed apps
+      val packageManager = reactContext.packageManager
+      val installedApps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+
+      val blockedPackages = mutableSetOf<String>()
+
+      for (appInfo in installedApps) {
+        val packageName = appInfo.packageName
+
+        // Skip current app
+        if (packageName == reactContext.packageName) continue
+
+        // Skip system utilities
+        val systemUtilities = setOf(
+          "com.android.settings",
+          "com.android.documentsui",
+          "com.android.packageinstaller",
+          "com.google.android.packageinstaller"
+        )
+        if (packageName in systemUtilities) continue
+
+        // Skip Google core services
+        if (packageName.startsWith("com.google.android.gms") ||
+            packageName.startsWith("com.google.android.gsf")) continue
+
+        // Must have launcher activity
+        val launchIntent = try {
+          packageManager.getLaunchIntentForPackage(packageName)
+        } catch (e: Exception) {
+          null
+        }
+        if (launchIntent == null) continue
+
+        // User app or updated system app
+        val isUserApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0
+        val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+
+        if (isUserApp || isUpdatedSystemApp) {
+          blockedPackages.add(packageName)
+        }
+      }
+
+      // Create session with end time
+      val session = SessionState(
+        id = "temporary-block",
+        blocked = blockedPackages,
+        allow = emptySet(),
+        startsAt = null,
+        endsAt = endsAt
+      )
+
+      val style = if (styleMap != null) parseShieldStyle(styleMap) else null
+      BlockerAccessibilityService.addSession(session, style)
+
+      // Persist session to SharedPreferences for restoration on app restart
+      val currentSessions = BlockerAccessibilityService.sessions
+      val currentStyles = BlockerAccessibilityService.shieldStyles
+      SessionStorageHelper.saveSessions(reactContext, currentSessions, currentStyles)
+
+      android.util.Log.d(
+        "RNDeviceActivity",
+        "Temporary block started for $durationSeconds seconds"
+      )
+
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Failed to temporarily block: ${e.message}", e)
+    }
+  }
+
+  /**
    * Required for NativeEventEmitter.
    * Called when JS adds a listener.
    */
@@ -687,6 +797,38 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
   }
 
   // Helper methods
+
+  /**
+   * Cancel any pending temporary unblock alarm.
+   * This ensures that if unblockAllApps is called during a temporary unblock,
+   * the sessions won't be automatically restored later.
+   */
+  private fun cancelTemporaryUnblockAlarm() {
+    try {
+      val alarmManager = reactContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+      val intent = Intent(reactContext, TemporaryUnblockReceiver::class.java).apply {
+        action = TemporaryUnblockReceiver.ACTION_RESTORE_SESSIONS
+      }
+
+      val pendingIntent = PendingIntent.getBroadcast(
+        reactContext,
+        0,
+        intent,
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+          PendingIntent.FLAG_UPDATE_CURRENT
+        }
+      )
+
+      alarmManager.cancel(pendingIntent)
+      pendingIntent.cancel()
+
+      android.util.Log.d("RNDeviceActivity", "Cancelled temporary unblock alarm")
+    } catch (e: Exception) {
+      android.util.Log.e("RNDeviceActivity", "Failed to cancel temporary unblock alarm", e)
+    }
+  }
 
   private fun isAccessibilityServiceEnabled(): Boolean {
     val service = "${reactContext.packageName}/${BlockerAccessibilityService::class.java.canonicalName}"

@@ -44,8 +44,8 @@ class BlockerAccessibilityService : AccessibilityService() {
   companion object {
     var instance: BlockerAccessibilityService? = null
     var currentForegroundPackage: String? = null
-    private val sessions = mutableMapOf<String, SessionState>()
-    private val shieldStyles = mutableMapOf<String, ShieldStyle>()
+    internal val sessions = mutableMapOf<String, SessionState>()
+    internal val shieldStyles = mutableMapOf<String, ShieldStyle>()
 
     /**
      * Add or update a blocking session.
@@ -169,6 +169,12 @@ class BlockerAccessibilityService : AccessibilityService() {
     android.util.Log.d("BlockerService", "Accessibility service connected")
     RNDeviceActivityAndroidModule.sendServiceStateEvent(true)
 
+    // Restore any persisted blocking sessions
+    val restored = SessionStorageHelper.restoreSessions(this)
+    if (restored) {
+      android.util.Log.d("BlockerService", "Restored blocking sessions from storage")
+    }
+
     // Start polling for foreground app
     startForegroundAppCheck()
   }
@@ -208,8 +214,13 @@ class BlockerAccessibilityService : AccessibilityService() {
   fun checkForegroundNow() {
     android.util.Log.d("BlockerService", "Immediate foreground check triggered")
 
-    // Run the check synchronously
-    val foregroundPackage = getForegroundApp()
+    // First try to get current foreground app from cache
+    var foregroundPackage = currentForegroundPackage
+
+    // If not cached, query UsageStatsManager with longer time window
+    if (foregroundPackage == null) {
+      foregroundPackage = getForegroundAppExtended()
+    }
 
     if (foregroundPackage != null) {
       android.util.Log.d("BlockerService", "Immediate check - Foreground app: $foregroundPackage")
@@ -227,8 +238,42 @@ class BlockerAccessibilityService : AccessibilityService() {
           android.util.Log.d("BlockerService", "Immediate check - Should block $foregroundPackage, showing overlay")
           showOverlay(sessionId, foregroundPackage)
           RNDeviceActivityAndroidModule.sendEvent("app_attempt", foregroundPackage, sessionId)
+        } else {
+          android.util.Log.d("BlockerService", "Immediate check - $foregroundPackage is not blocked (shouldBlock=$shouldBlock, sessionId=$sessionId)")
+        }
+      } else {
+        android.util.Log.d("BlockerService", "Immediate check - Ignoring system/launcher app: $foregroundPackage")
+      }
+    } else {
+      android.util.Log.w("BlockerService", "Immediate check - Could not determine foreground app")
+    }
+  }
+
+  /**
+   * Get foreground app with extended time window (last 30 seconds).
+   * Used when we need to find the current app even if there was no recent switch.
+   */
+  private fun getForegroundAppExtended(): String? {
+    try {
+      val now = System.currentTimeMillis()
+      // Query last 30 seconds to catch the current foreground app
+      val usageEvents = usageStatsManager?.queryEvents(now - 30000, now)
+      var foregroundApp: String? = null
+
+      usageEvents?.let {
+        val event = UsageEvents.Event()
+        while (it.hasNextEvent()) {
+          it.getNextEvent(event)
+          if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) {
+            foregroundApp = event.packageName
+          }
         }
       }
+
+      return foregroundApp
+    } catch (e: Exception) {
+      android.util.Log.e("BlockerService", "Error getting foreground app (extended)", e)
+      return null
     }
   }
 
@@ -408,7 +453,7 @@ class BlockerAccessibilityService : AccessibilityService() {
         setPadding(0, 0, 0, 48)
       }
 
-      // Add button
+      // Add dismiss button
       val buttonView = Button(this).apply {
         text = style.ctaText
         textSize = 16f
@@ -432,9 +477,63 @@ class BlockerAccessibilityService : AccessibilityService() {
         }
       }
 
+      // Add "Go to Example App" button
+      val goToAppButton = Button(this).apply {
+        text = "Go to Example App"
+        textSize = 16f
+        setPadding(48, 24, 48, 24)
+        setBackgroundColor(0xFF4CAF50.toInt()) // Green color
+        setTextColor(0xFFFFFFFF.toInt())
+        val topMargin = (16 * resources.displayMetrics.density).toInt()
+        (layoutParams as? android.widget.LinearLayout.LayoutParams)?.topMargin = topMargin
+
+        setOnClickListener {
+          // Record dismissal for cooldown
+          lastDismissedPackage = blockedPackage
+          lastDismissedTime = System.currentTimeMillis()
+
+          hideOverlay()
+          RNDeviceActivityAndroidModule.sendEvent("block_dismissed", blockedPackage, sessionId)
+
+          // Launch the example app
+          try {
+            val launchIntent = packageManager.getLaunchIntentForPackage(applicationContext.packageName)
+            if (launchIntent != null) {
+              launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+              startActivity(launchIntent)
+            } else {
+              android.util.Log.e("BlockerService", "Could not get launch intent for app")
+              // Fallback to home screen
+              val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+              }
+              startActivity(homeIntent)
+            }
+          } catch (e: Exception) {
+            android.util.Log.e("BlockerService", "Failed to launch example app", e)
+            // Fallback to home screen
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+              addCategory(Intent.CATEGORY_HOME)
+              flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(homeIntent)
+          }
+        }
+      }
+
       linearLayout.addView(titleView)
       linearLayout.addView(messageView)
       linearLayout.addView(buttonView)
+
+      // Add margin and append the second button
+      val goToAppParams = android.widget.LinearLayout.LayoutParams(
+        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+      ).apply {
+        topMargin = (16 * resources.displayMetrics.density).toInt()
+      }
+      linearLayout.addView(goToAppButton, goToAppParams)
 
       // Add LinearLayout centered in container
       val contentParams = FrameLayout.LayoutParams(

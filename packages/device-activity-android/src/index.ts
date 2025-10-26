@@ -174,12 +174,15 @@ const DeviceActivityAndroid = {
    * Creates a blocking session with all installed apps in the blocked list.
    *
    * @param sessionId - Optional session ID (defaults to "block-all")
-   * @param endsAt - Optional end time in milliseconds
+   * @param endsAt - Optional end time in milliseconds. If not provided, blocks indefinitely until manually unblocked.
    * @param style - Optional styling for the block overlay screen
    * @returns Promise that resolves when all apps are blocked
    *
    * @example
    * ```ts
+   * // Block all apps indefinitely
+   * await DeviceActivityAndroid.blockAllApps()
+   *
    * // Block all apps for 1 hour
    * await DeviceActivityAndroid.blockAllApps(
    *   'deep-focus',
@@ -193,7 +196,7 @@ const DeviceActivityAndroid = {
     endsAt?: number,
     style?: ShieldStyle
   ): Promise<void> {
-    return nativeModule.blockAllApps(sessionId || null, endsAt || null, style || null)
+    return nativeModule.blockAllApps(sessionId || null, endsAt === undefined ? null : endsAt, style || null)
   },
 
   /**
@@ -258,6 +261,28 @@ const DeviceActivityAndroid = {
    */
   temporaryUnblock(durationSeconds: number): Promise<void> {
     return nativeModule.temporaryUnblock(durationSeconds)
+  },
+
+  /**
+   * Temporarily block all apps for a specified duration.
+   * After the duration expires, blocking automatically ends.
+   *
+   * @param durationSeconds - Duration in seconds to block apps
+   * @param style - Optional styling for the block overlay screen
+   * @returns Promise that resolves when temporary block starts
+   *
+   * @example
+   * ```ts
+   * // Block all apps for 5 minutes
+   * await DeviceActivityAndroid.temporaryBlock(300, {
+   *   title: 'Focus Time',
+   *   message: 'Taking a break from apps',
+   *   ctaText: 'Dismiss'
+   * })
+   * ```
+   */
+  temporaryBlock(durationSeconds: number, style?: ShieldStyle): Promise<void> {
+    return nativeModule.temporaryBlock(durationSeconds, style || null)
   },
 
   /**

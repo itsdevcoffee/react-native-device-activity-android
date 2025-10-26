@@ -3,6 +3,9 @@ package com.breakrr.deviceactivity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.modules.core.DeviceEventManagerModule
 
@@ -26,13 +29,48 @@ class TemporaryUnblockReceiver : BroadcastReceiver() {
 
     android.util.Log.d("RNDeviceActivity", "TemporaryUnblockReceiver: Alarm fired, restoring sessions")
 
+    // Acquire a wake lock to ensure we have time to complete the operation
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+    val wakeLock = powerManager.newWakeLock(
+      PowerManager.PARTIAL_WAKE_LOCK,
+      "DeviceActivity::RestoreSessions"
+    )
+    wakeLock.acquire(10000) // 10 seconds max
+
     try {
       // Restore sessions from SharedPreferences
       val restored = SessionStorageHelper.restoreSessions(context)
 
       if (restored) {
-        // Clear cooldown and trigger immediate check
-        BlockerAccessibilityService.clearCooldownAndCheckNow()
+        android.util.Log.d("RNDeviceActivity", "Sessions restored from storage")
+
+        // Post to main thread to ensure proper service access
+        Handler(Looper.getMainLooper()).post {
+          try {
+            // Clear cooldown
+            BlockerAccessibilityService.instance?.clearCooldown()
+            android.util.Log.d("RNDeviceActivity", "Cooldown cleared")
+
+            // Force immediate foreground check with retry
+            Handler(Looper.getMainLooper()).postDelayed({
+              BlockerAccessibilityService.instance?.checkForegroundNow()
+              android.util.Log.d("RNDeviceActivity", "Immediate foreground check triggered")
+
+              // Retry after 500ms to catch any delays
+              Handler(Looper.getMainLooper()).postDelayed({
+                BlockerAccessibilityService.instance?.checkForegroundNow()
+                android.util.Log.d("RNDeviceActivity", "Retry foreground check triggered")
+              }, 500)
+            }, 100) // Small delay to ensure service is ready
+          } catch (e: Exception) {
+            android.util.Log.e("RNDeviceActivity", "Error triggering foreground check", e)
+          } finally {
+            // Release wake lock after operations complete
+            if (wakeLock.isHeld) {
+              wakeLock.release()
+            }
+          }
+        }
 
         // Send event to React Native (if app is running)
         try {
@@ -51,9 +89,15 @@ class TemporaryUnblockReceiver : BroadcastReceiver() {
         android.util.Log.d("RNDeviceActivity", "Sessions restored successfully after temporary unblock")
       } else {
         android.util.Log.w("RNDeviceActivity", "No saved sessions found to restore")
+        if (wakeLock.isHeld) {
+          wakeLock.release()
+        }
       }
     } catch (e: Exception) {
       android.util.Log.e("RNDeviceActivity", "Failed to restore sessions after temporary unblock", e)
+      if (wakeLock.isHeld) {
+        wakeLock.release()
+      }
     }
   }
 }

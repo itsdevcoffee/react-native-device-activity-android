@@ -17,6 +17,7 @@ import DeviceActivityAndroid, {
   getCategoryLabel,
 } from '@breakrr/react-native-device-activity-android'
 import { AppSelector, type AppItem } from './components/AppSelector'
+import { storageHelpers } from './storage'
 
 export default function App() {
   const [permissions, setPermissions] = useState<PermissionsStatus>({
@@ -31,13 +32,33 @@ export default function App() {
   const [installedApps, setInstalledApps] = useState<AppItem[]>([])
   const [loadingApps, setLoadingApps] = useState(false)
   const [selectorMode, setSelectorMode] = useState<'list' | 'grid'>('list')
+  const [tempBlockSeconds, setTempBlockSeconds] = useState('300')
   const [tempUnblockSeconds, setTempUnblockSeconds] = useState('60')
   const [tempUnblockTimeRemaining, setTempUnblockTimeRemaining] = useState<number | null>(null)
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     checkPermissions()
+    checkBlockStatus()
+
+    // Load persisted data from MMKV
+    const savedPackages = storageHelpers.getBlockedPackages()
+    const savedMode = storageHelpers.getSelectorMode()
+    if (savedPackages.length > 0) {
+      setBlockedPackages(savedPackages)
+    }
+    setSelectorMode(savedMode)
   }, [])
+
+  // Persist blocked packages to MMKV
+  useEffect(() => {
+    storageHelpers.setBlockedPackages(blockedPackages)
+  }, [blockedPackages])
+
+  // Persist selector mode to MMKV
+  useEffect(() => {
+    storageHelpers.setSelectorMode(selectorMode)
+  }, [selectorMode])
 
   // Countdown timer for temporary unblock
   useEffect(() => {
@@ -71,6 +92,15 @@ export default function App() {
       setPermissions(status)
     } catch (error) {
       console.error('❌ Error:', error)
+    }
+  }
+
+  const checkBlockStatus = async () => {
+    try {
+      const status = await DeviceActivityAndroid.getBlockStatus()
+      setSessionActive(status.isBlocking)
+    } catch (error) {
+      console.error('Error checking block status:', error)
     }
   }
 
@@ -183,17 +213,41 @@ export default function App() {
     try {
       await DeviceActivityAndroid.blockAllApps(
         'block-all-session',
-        Date.now() + 60 * 60 * 1000, // 1 hour
+        undefined, // Indefinite blocking
         {
           title: 'All Apps Blocked',
-          message: 'All apps are blocked for 1 hour.',
-          ctaText: 'Go Back',
+          message: 'All apps are blocked indefinitely until you unblock them.',
+          ctaText: 'Dismiss',
         }
       )
       setSessionActive(true)
-      Alert.alert('Success', 'All apps blocked for 1 hour!')
+      Alert.alert('Success', 'All apps blocked indefinitely!')
     } catch (error: any) {
       Alert.alert('Error', `Failed to block all apps: ${error.message}`)
+      console.error(error)
+    }
+  }
+
+  const handleTemporaryBlock = async () => {
+    try {
+      const duration = parseInt(tempBlockSeconds, 10)
+      if (isNaN(duration) || duration <= 0) {
+        Alert.alert('Error', 'Please enter a valid number of seconds')
+        return
+      }
+
+      await DeviceActivityAndroid.temporaryBlock(duration, {
+        title: 'Temporary Block',
+        message: `Apps blocked for ${Math.floor(duration / 60)} minutes`,
+        ctaText: 'Dismiss',
+      })
+      setSessionActive(true)
+      Alert.alert(
+        'Success',
+        `Apps blocked for ${Math.floor(duration / 60)} minutes. Blocking will end automatically.`
+      )
+    } catch (error: any) {
+      Alert.alert('Error', `Failed to temporarily block: ${error.message}`)
       console.error(error)
     }
   }
@@ -247,6 +301,7 @@ export default function App() {
         if (event.type === 'temporary_unblock_ended') {
           Alert.alert('Notice', 'Blocking has resumed!')
           setTempUnblockTimeRemaining(null)
+          setSessionActive(true)
           subscription.remove()
         }
       })
@@ -365,6 +420,31 @@ export default function App() {
           </View>
         </View>
 
+        {/* Temporary Block */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Temporary Block</Text>
+          <Text style={styles.helpText}>Block all apps for a specific duration</Text>
+
+          <View style={styles.tempBlockContainer}>
+            <Text style={styles.inputLabel}>Duration (seconds):</Text>
+            <View style={styles.tempBlockRow}>
+              <TextInput
+                style={styles.tempBlockInput}
+                value={tempBlockSeconds}
+                onChangeText={setTempBlockSeconds}
+                keyboardType='numeric'
+                placeholder='300'
+              />
+              <TouchableOpacity
+                style={[styles.button, styles.buttonRed, styles.tempBlockButton]}
+                onPress={handleTemporaryBlock}
+              >
+                <Text style={styles.buttonText}>Block</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
         {/* Focus Session */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Focus Session</Text>
@@ -405,9 +485,13 @@ export default function App() {
 
           <View style={styles.row}>
             <TouchableOpacity
-              style={[styles.button, styles.buttonGreen, sessionActive && styles.buttonDisabled]}
+              style={[
+                styles.button,
+                styles.buttonGreen,
+                (sessionActive || blockedPackages.length === 0) && styles.buttonDisabled,
+              ]}
               onPress={startFocusSession}
-              disabled={sessionActive}
+              disabled={sessionActive || blockedPackages.length === 0}
             >
               <Text style={styles.buttonText}>Start Focus</Text>
             </TouchableOpacity>
@@ -421,6 +505,11 @@ export default function App() {
             </TouchableOpacity>
           </View>
 
+          {blockedPackages.length === 0 && !sessionActive && (
+            <Text style={styles.helpTextWarning}>
+              ⚠️ Please select apps before starting a focus session
+            </Text>
+          )}
           {sessionActive && <Text style={styles.activeText}>✓ Session Active</Text>}
         </View>
 
@@ -595,6 +684,46 @@ const styles = StyleSheet.create({
   },
   rowWithSpacing: {
     marginBottom: 10,
+  },
+  helpText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 12,
+  },
+  helpTextWarning: {
+    fontSize: 14,
+    color: '#FF9800',
+    marginTop: 8,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  tempBlockContainer: {
+    marginTop: 4,
+  },
+  tempBlockRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  tempBlockInput: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  tempBlockButton: {
+    flex: 0,
+    paddingHorizontal: 24,
   },
   tempUnblockContainer: {
     marginTop: 10,
