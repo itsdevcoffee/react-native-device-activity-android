@@ -6,6 +6,7 @@ import {
   SectionList,
   StyleSheet,
   Platform,
+  RefreshControl,
 } from 'react-native'
 import Animated, {
   useSharedValue,
@@ -32,6 +33,8 @@ type ZenListProps = {
   onToggleSection?: (section: string, collapsed: boolean) => void
   categoryOrder?: CategoryOrder
   showEmptyCategories?: boolean
+  onRefresh?: () => void
+  refreshing?: boolean
 }
 
 type Section = {
@@ -189,6 +192,8 @@ export function ZenList({
   onToggleSection,
   categoryOrder = 'default',
   showEmptyCategories = true,
+  onRefresh,
+  refreshing = false,
 }: ZenListProps) {
   const [collapsedState, setCollapsedState] = useState<CollapsedState>(initiallyCollapsed)
 
@@ -348,7 +353,17 @@ export function ZenList({
         offset: rowHeight * index,
         index,
       })}
-      style={{ backgroundColor: theme.background, overflow: 'hidden' }}
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.primary}
+            colors={[theme.primary]}
+          />
+        ) : undefined
+      }
+      style={{ backgroundColor: theme.background }}
     />
   )
 }

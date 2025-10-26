@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
   Platform,
   ScrollView,
+  RefreshControl,
 } from 'react-native'
 import Animated, {
   useSharedValue,
@@ -36,6 +37,8 @@ type CardGridProps = {
   onToggleSection?: (section: string, collapsed: boolean) => void
   categoryOrder?: CategoryOrder
   showEmptyCategories?: boolean
+  onRefresh?: () => void
+  refreshing?: boolean
 }
 
 type Section = {
@@ -149,6 +152,8 @@ export function CardGrid({
   onToggleSection,
   categoryOrder = 'default',
   showEmptyCategories = true,
+  onRefresh,
+  refreshing = false,
 }: CardGridProps) {
   const { width } = useWindowDimensions()
   const [collapsedState, setCollapsedState] = useState<CollapsedState>(initiallyCollapsed)
@@ -405,7 +410,16 @@ export function CardGrid({
         maxToRenderPerBatch={20}
         initialNumToRender={15}
         windowSize={11}
-        style={{ overflow: 'hidden' }}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.primary}
+              colors={[theme.primary]}
+            />
+          ) : undefined
+        }
       />
     </View>
   )

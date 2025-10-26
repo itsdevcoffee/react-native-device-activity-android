@@ -59,6 +59,8 @@ export function AppSelector({
   onCancel,
   renderFooter,
   strings: customStrings,
+  onRefresh,
+  refreshing = false,
 }: AppSelectorProps) {
   const theme = useMemo(() => mergeTheme(customTheme), [customTheme])
   const strings = useMemo(() => ({ ...defaultStrings, ...customStrings }), [customStrings])
@@ -277,6 +279,8 @@ export function AppSelector({
             onToggleSection={handleToggleSection}
             categoryOrder={categoryOrder}
             showEmptyCategories={showEmptyCategories}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
           />
         ) : (
           <CardGrid
@@ -297,6 +301,8 @@ export function AppSelector({
             onToggleSection={handleToggleSection}
             categoryOrder={categoryOrder}
             showEmptyCategories={showEmptyCategories}
+            onRefresh={onRefresh}
+            refreshing={refreshing}
           />
         )}
       </View>

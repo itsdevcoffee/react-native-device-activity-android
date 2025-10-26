@@ -117,9 +117,7 @@ export default function App() {
 
   const openAppPicker = () => {
     setShowAppPicker(true)
-    if (installedApps.length === 0) {
-      loadInstalledApps()
-    }
+    loadInstalledApps()
   }
 
   const getAppName = (packageName: string) => {
@@ -462,7 +460,7 @@ export default function App() {
         statusBarTranslucent={false}
       >
         <SafeAreaProvider>
-          {loadingApps ? (
+          {loadingApps && installedApps.length === 0 ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size='large' color='#007AFF' />
               <Text style={styles.loadingText}>Loading apps...</Text>
@@ -488,6 +486,8 @@ export default function App() {
               onToggleSection={(section, collapsed) => {
                 console.log(`Section "${section}" ${collapsed ? 'collapsed' : 'expanded'}`)
               }}
+              onRefresh={loadInstalledApps}
+              refreshing={loadingApps}
             />
           )}
         </SafeAreaProvider>

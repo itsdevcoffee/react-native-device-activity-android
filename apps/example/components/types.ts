@@ -68,6 +68,8 @@ export type AppSelectorProps = {
   onSubmit?: (ids: string[]) => void // "Done" or bottom primary
   onCancel?: () => void // "Cancel"
   renderFooter?: React.ReactNode
+  onRefresh?: () => void // pull-to-refresh callback
+  refreshing?: boolean // pull-to-refresh loading state
 
   // Copy overrides
   strings?: Partial<{
