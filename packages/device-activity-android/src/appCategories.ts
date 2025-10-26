@@ -122,3 +122,33 @@ export const CATEGORY_DISPLAY_ORDER: AppCategory[] = [
   AppCategory.NEWS,
   AppCategory.UNDEFINED,
 ]
+
+/**
+ * Default category names in display order.
+ */
+export const DEFAULT_CATEGORY_ORDER: string[] = [
+  'Social',
+  'Entertainment',
+  'Games',
+  'Productivity',
+  'Music',
+  'Photo & Video',
+  'Navigation',
+  'News',
+  'Other',
+]
+
+/**
+ * Map category display name to category ID.
+ */
+export function getCategoryIdFromName(name: string): AppCategory | null {
+  const entry = Object.entries(APP_CATEGORY_LABELS).find(([_, label]) => label === name)
+  return entry ? (parseInt(entry[0]) as AppCategory) : null
+}
+
+/**
+ * Deduplicate an array of category names while preserving order.
+ */
+export function deduplicateCategoryNames(names: string[]): string[] {
+  return Array.from(new Set(names))
+}
