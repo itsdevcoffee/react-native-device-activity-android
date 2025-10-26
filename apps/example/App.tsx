@@ -33,12 +33,14 @@ export default function App() {
   const [selectorMode, setSelectorMode] = useState<'list' | 'grid'>('list')
   const [tempBlockSeconds, setTempBlockSeconds] = useState('15')
   const [tempUnblockSeconds, setTempUnblockSeconds] = useState('15')
+  const [tempBlockTimeRemaining, setTempBlockTimeRemaining] = useState<number | null>(null)
   const [tempUnblockTimeRemaining, setTempUnblockTimeRemaining] = useState<number | null>(null)
   const [activeTimer, setActiveTimer] = useState<{
     type: 'block' | 'unblock'
     startTime: number
     durationSeconds: number
   } | null>(null)
+  const tempBlockCountdownRef = useRef<NodeJS.Timeout | null>(null)
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const isInitialMount = useRef(true)
 
@@ -60,6 +62,7 @@ export default function App() {
         console.log(`[SessionExpired] Session ${event.sessionId} has expired`)
         setSessionActive(false)
         setActiveTimer(null)
+        setTempBlockTimeRemaining(null)
         setTempUnblockTimeRemaining(null)
       }
     })
@@ -78,6 +81,31 @@ export default function App() {
   useEffect(() => {
     storageHelpers.setSelectorMode(selectorMode)
   }, [selectorMode])
+
+  // Countdown timer for temporary block
+  useEffect(() => {
+    if (tempBlockTimeRemaining !== null && tempBlockTimeRemaining > 0) {
+      tempBlockCountdownRef.current = setInterval(() => {
+        setTempBlockTimeRemaining(prev => {
+          if (prev === null || prev <= 1) {
+            if (tempBlockCountdownRef.current) {
+              clearInterval(tempBlockCountdownRef.current)
+              tempBlockCountdownRef.current = null
+            }
+            return null
+          }
+          return prev - 1
+        })
+      }, 1000)
+
+      return () => {
+        if (tempBlockCountdownRef.current) {
+          clearInterval(tempBlockCountdownRef.current)
+          tempBlockCountdownRef.current = null
+        }
+      }
+    }
+  }, [tempBlockTimeRemaining])
 
   // Countdown timer for temporary unblock
   useEffect(() => {
@@ -300,6 +328,7 @@ export default function App() {
       )
       setSessionActive(true)
       setActiveTimer(null) // Clear any timer since this is indefinite
+      setTempBlockTimeRemaining(null) // Clear countdown since this is indefinite
       console.log(`${blockedPackages.length} app(s) blocked indefinitely!`)
     } catch (error: any) {
       console.error(`Failed to block apps: ${error.message}`)
@@ -352,6 +381,7 @@ export default function App() {
         startTime: Date.now(),
         durationSeconds: duration,
       })
+      setTempBlockTimeRemaining(duration)
 
       console.log(`[TemporaryBlock] Session started successfully. Should end at ${new Date(endsAt).toLocaleTimeString()}`)
 
@@ -368,6 +398,7 @@ export default function App() {
       await DeviceActivityAndroid.unblockAllApps()
       setSessionActive(false)
       setActiveTimer(null) // Clear any active timer
+      setTempBlockTimeRemaining(null) // Clear countdown display
       setTempUnblockTimeRemaining(null) // Clear countdown display
       console.log('All apps unblocked!')
     } catch (error: any) {
@@ -432,6 +463,49 @@ export default function App() {
       })
     } catch (error: any) {
       console.error(`Failed to temporarily unblock: ${error.message}`)
+    }
+  }
+
+  const cancelTemporaryBlock = async () => {
+    try {
+      console.log('Canceling temporary block...')
+      await DeviceActivityAndroid.unblockAllApps()
+      setSessionActive(false)
+      setActiveTimer(null)
+      setTempBlockTimeRemaining(null)
+      console.log('Temporary block canceled')
+    } catch (error: any) {
+      console.error(`Failed to cancel temporary block: ${error.message}`)
+    }
+  }
+
+  const cancelTemporaryUnblock = async () => {
+    try {
+      console.log('Canceling temporary unblock, restoring blocking...')
+
+      // Cancel the temporary unblock alarm
+      await DeviceActivityAndroid.unblockAllApps()
+
+      // Immediately restart the blocking session
+      await DeviceActivityAndroid.startSession(
+        {
+          id: 'block-all-session',
+          blockedPackages: blockedPackages,
+          endsAt: undefined, // Indefinite blocking
+        },
+        {
+          title: 'Selected Apps Blocked',
+          message: 'Selected apps are blocked indefinitely until you unblock them.',
+          ctaText: 'Dismiss',
+        }
+      )
+
+      setSessionActive(true)
+      setActiveTimer(null)
+      setTempUnblockTimeRemaining(null)
+      console.log('Temporary unblock canceled, blocking restored')
+    } catch (error: any) {
+      console.error(`Failed to cancel temporary unblock: ${error.message}`)
     }
   }
 
@@ -527,12 +601,15 @@ export default function App() {
                 onChangeText={setTempUnblockSeconds}
                 keyboardType='numeric'
                 placeholder='15'
+                editable={tempUnblockTimeRemaining === null}
               />
               <TouchableOpacity
                 style={[styles.button, styles.buttonTeal, styles.tempUnblockButton]}
-                onPress={() => temporaryUnblock()}
+                onPress={() => tempUnblockTimeRemaining !== null ? cancelTemporaryUnblock() : temporaryUnblock()}
               >
-                <Text style={styles.buttonText}>Start</Text>
+                <Text style={styles.buttonText}>
+                  {tempUnblockTimeRemaining !== null ? 'Cancel' : 'Start'}
+                </Text>
               </TouchableOpacity>
             </View>
             {tempUnblockTimeRemaining !== null && (
@@ -560,14 +637,25 @@ export default function App() {
                 onChangeText={setTempBlockSeconds}
                 keyboardType='numeric'
                 placeholder='15'
+                editable={tempBlockTimeRemaining === null}
               />
               <TouchableOpacity
                 style={[styles.button, styles.buttonRed, styles.tempBlockButton]}
-                onPress={() => handleTemporaryBlock()}
+                onPress={() => tempBlockTimeRemaining !== null ? cancelTemporaryBlock() : handleTemporaryBlock()}
               >
-                <Text style={styles.buttonText}>Block</Text>
+                <Text style={styles.buttonText}>
+                  {tempBlockTimeRemaining !== null ? 'Cancel' : 'Block'}
+                </Text>
               </TouchableOpacity>
             </View>
+            {tempBlockTimeRemaining !== null && (
+              <View style={styles.tempBlockCountdownContainer}>
+                <Text style={styles.tempBlockCountdownText}>
+                  ⏱️ Blocking ends in: {Math.floor(tempBlockTimeRemaining / 60)}:
+                  {(tempBlockTimeRemaining % 60).toString().padStart(2, '0')}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -865,6 +953,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#2E7D32',
+    textAlign: 'center',
+  },
+  tempBlockCountdownContainer: {
+    marginTop: 10,
+    backgroundColor: '#FFEBEE',
+    padding: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#F44336',
+  },
+  tempBlockCountdownText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#C62828',
     textAlign: 'center',
   },
   activeText: {
