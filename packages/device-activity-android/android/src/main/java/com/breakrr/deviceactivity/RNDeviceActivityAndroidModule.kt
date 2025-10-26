@@ -51,6 +51,17 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
         ?.emit(EVENT_NAME, map)
     }
 
+    fun sendSessionExpiredEvent(sessionId: String) {
+      val map = Arguments.createMap().apply {
+        putString("type", "session_expired")
+        putString("sessionId", sessionId)
+        putDouble("ts", System.currentTimeMillis().toDouble())
+      }
+      staticReactContext?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        ?.emit(EVENT_NAME, map)
+      android.util.Log.d("RNDeviceActivity", "Session expired event sent for: $sessionId")
+    }
+
     private fun createEventMap(eventType: String, packageName: String, sessionId: String): WritableMap {
       return Arguments.createMap().apply {
         putString("type", eventType)

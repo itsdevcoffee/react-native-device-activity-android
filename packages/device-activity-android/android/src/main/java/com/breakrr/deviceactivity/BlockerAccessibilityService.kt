@@ -79,12 +79,60 @@ class BlockerAccessibilityService : AccessibilityService() {
      */
     fun shouldBlockPackage(packageName: String): Pair<Boolean, String?> {
       val now = System.currentTimeMillis()
+
       for ((id, session) in sessions) {
-        if (session.isActive(now) && session.shouldBlock(packageName)) {
+        val isActive = session.isActive(now)
+        val shouldBlock = session.shouldBlock(packageName)
+
+        android.util.Log.d(
+          "BlockerService",
+          "Session $id: isActive=$isActive, shouldBlock=$shouldBlock, now=$now, endsAt=${session.endsAt}"
+        )
+
+        if (isActive && shouldBlock) {
           return Pair(true, id)
         }
       }
       return Pair(false, null)
+    }
+
+    /**
+     * Remove sessions that have expired.
+     */
+    fun cleanupExpiredSessions(now: Long) {
+      val expiredSessions = sessions.filter { (_, session) ->
+        session.endsAt != null && now > session.endsAt
+      }
+
+      if (expiredSessions.isNotEmpty()) {
+        android.util.Log.d(
+          "BlockerService",
+          "Cleaning up ${expiredSessions.size} expired sessions: ${expiredSessions.keys}"
+        )
+
+        expiredSessions.keys.forEach { sessionId ->
+          sessions.remove(sessionId)
+          shieldStyles.remove(sessionId)
+
+          // Notify React Native that the session has ended
+          try {
+            RNDeviceActivityAndroidModule.sendSessionExpiredEvent(sessionId)
+          } catch (e: Exception) {
+            android.util.Log.e("BlockerService", "Failed to send session expired event", e)
+          }
+        }
+
+        // If we removed sessions, immediately check if overlay should still be shown
+        val serviceInstance = instance
+        val foregroundPkg = currentForegroundPackage
+        if (serviceInstance != null && foregroundPkg != null) {
+          val (shouldBlock, _) = shouldBlockPackage(foregroundPkg)
+          if (!shouldBlock) {
+            android.util.Log.d("BlockerService", "Session expired - hiding overlay for $foregroundPkg")
+            serviceInstance.hideOverlay()
+          }
+        }
+      }
     }
 
     /**
@@ -308,6 +356,9 @@ class BlockerAccessibilityService : AccessibilityService() {
    */
   private val foregroundCheckRunnable = object : Runnable {
     override fun run() {
+      // Clean up expired sessions every cycle
+      cleanupExpiredSessions(System.currentTimeMillis())
+
       val foregroundPackage = getForegroundApp()
 
       if (foregroundPackage != null && foregroundPackage != lastForegroundPackage) {

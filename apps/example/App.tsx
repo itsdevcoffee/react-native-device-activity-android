@@ -4,7 +4,6 @@ import {
   Text,
   View,
   TouchableOpacity,
-  Alert,
   Modal,
   ActivityIndicator,
   ScrollView,
@@ -32,10 +31,16 @@ export default function App() {
   const [installedApps, setInstalledApps] = useState<AppItem[]>([])
   const [loadingApps, setLoadingApps] = useState(false)
   const [selectorMode, setSelectorMode] = useState<'list' | 'grid'>('list')
-  const [tempBlockSeconds, setTempBlockSeconds] = useState('300')
-  const [tempUnblockSeconds, setTempUnblockSeconds] = useState('60')
+  const [tempBlockSeconds, setTempBlockSeconds] = useState('15')
+  const [tempUnblockSeconds, setTempUnblockSeconds] = useState('15')
   const [tempUnblockTimeRemaining, setTempUnblockTimeRemaining] = useState<number | null>(null)
+  const [activeTimer, setActiveTimer] = useState<{
+    type: 'block' | 'unblock'
+    startTime: number
+    durationSeconds: number
+  } | null>(null)
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const isInitialMount = useRef(true)
 
   useEffect(() => {
     checkPermissions()
@@ -48,6 +53,20 @@ export default function App() {
       setBlockedPackages(savedPackages)
     }
     setSelectorMode(savedMode)
+
+    // Listen for session expiration events
+    const subscription = DeviceActivityAndroid.addListener(event => {
+      if (event.type === 'session_expired') {
+        console.log(`[SessionExpired] Session ${event.sessionId} has expired`)
+        setSessionActive(false)
+        setActiveTimer(null)
+        setTempUnblockTimeRemaining(null)
+      }
+    })
+
+    return () => {
+      subscription.remove()
+    }
   }, [])
 
   // Persist blocked packages to MMKV
@@ -84,6 +103,62 @@ export default function App() {
       }
     }
   }, [tempUnblockTimeRemaining])
+
+  // Auto-update session when blocked packages change during active blocking
+  useEffect(() => {
+    // Skip on initial mount
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+
+    // Only update if blocking is active and we have apps selected
+    if (!sessionActive || blockedPackages.length === 0) {
+      return
+    }
+
+    const updateSession = async () => {
+      try {
+        if (activeTimer) {
+          // Calculate remaining time on the timer
+          const elapsed = (Date.now() - activeTimer.startTime) / 1000
+          const remaining = Math.max(1, Math.ceil(activeTimer.durationSeconds - elapsed))
+
+          console.log(`Updating session with new packages. Timer has ${remaining}s remaining.`)
+
+          if (activeTimer.type === 'block') {
+            // Cancel current session and restart temp block with remaining time
+            await DeviceActivityAndroid.unblockAllApps()
+            await handleTemporaryBlock(remaining)
+          } else {
+            // For temp unblock, we need to update what will be blocked when timer ends
+            // Cancel and restart the temp unblock
+            await DeviceActivityAndroid.unblockAllApps()
+            await temporaryUnblock(remaining)
+          }
+        } else {
+          // Indefinite blocking - just update the session
+          console.log('Updating indefinite blocking session with new packages.')
+          await DeviceActivityAndroid.startSession(
+            {
+              id: 'block-all-session',
+              blockedPackages: blockedPackages,
+              endsAt: undefined,
+            },
+            {
+              title: 'Selected Apps Blocked',
+              message: 'Selected apps are blocked indefinitely until you unblock them.',
+              ctaText: 'Dismiss',
+            }
+          )
+        }
+      } catch (error: any) {
+        console.error('Failed to update session:', error)
+      }
+    }
+
+    updateSession()
+  }, [blockedPackages])
 
   const checkPermissions = async () => {
     try {
@@ -122,7 +197,7 @@ export default function App() {
       }
       setTimeout(checkPermissions, 1000)
     } catch (error) {
-      Alert.alert('Error', `Failed to request ${type} permission`)
+      console.error(`Failed to request ${type} permission`, error)
     }
   }
 
@@ -139,7 +214,7 @@ export default function App() {
       }))
       setInstalledApps(normalized)
     } catch (error: any) {
-      Alert.alert('Error', `Failed to load apps: ${error.message}`)
+      console.error('Failed to load apps:', error)
     } finally {
       setLoadingApps(false)
     }
@@ -158,7 +233,7 @@ export default function App() {
   const startFocusSession = async () => {
     try {
       if (blockedPackages.length === 0) {
-        Alert.alert('Error', 'Please select at least one app to block')
+        console.log('Cannot start focus session: No apps selected')
         return
       }
 
@@ -176,10 +251,9 @@ export default function App() {
       )
 
       setSessionActive(true)
-      Alert.alert('Success', '5-minute focus session started!')
+      console.log('5-minute focus session started!')
     } catch (error) {
-      Alert.alert('Error', 'Failed to start session')
-      console.error(error)
+      console.error('Failed to start session:', error)
     }
   }
 
@@ -187,9 +261,9 @@ export default function App() {
     try {
       await DeviceActivityAndroid.stopAllSessions()
       setSessionActive(false)
-      Alert.alert('Success', 'Focus session stopped')
+      console.log('Focus session stopped')
     } catch (error) {
-      Alert.alert('Error', 'Failed to stop session')
+      console.error('Failed to stop session:', error)
     }
   }
 
@@ -199,56 +273,93 @@ export default function App() {
       const json = JSON.stringify(metadata, null, 2)
       console.log('📦 App Metadata JSON:')
       console.log(json)
-      Alert.alert(
-        'Exported!',
-        `Exported ${metadata.length} apps to console logs. Check the terminal/logs for the JSON output.`
-      )
+      console.log(`Exported ${metadata.length} apps to console logs`)
     } catch (error) {
-      Alert.alert('Error', 'Failed to export app metadata')
-      console.error(error)
+      console.error('Failed to export app metadata:', error)
     }
   }
 
   const blockAllApps = async () => {
     try {
-      await DeviceActivityAndroid.blockAllApps(
-        'block-all-session',
-        undefined, // Indefinite blocking
+      if (blockedPackages.length === 0) {
+        console.log('Cannot block: No apps selected')
+        return
+      }
+
+      await DeviceActivityAndroid.startSession(
         {
-          title: 'All Apps Blocked',
-          message: 'All apps are blocked indefinitely until you unblock them.',
+          id: 'block-all-session',
+          blockedPackages: blockedPackages,
+          endsAt: undefined, // Indefinite blocking
+        },
+        {
+          title: 'Selected Apps Blocked',
+          message: 'Selected apps are blocked indefinitely until you unblock them.',
           ctaText: 'Dismiss',
         }
       )
       setSessionActive(true)
-      Alert.alert('Success', 'All apps blocked indefinitely!')
+      setActiveTimer(null) // Clear any timer since this is indefinite
+      console.log(`${blockedPackages.length} app(s) blocked indefinitely!`)
     } catch (error: any) {
-      Alert.alert('Error', `Failed to block all apps: ${error.message}`)
-      console.error(error)
+      console.error(`Failed to block apps: ${error.message}`)
     }
   }
 
-  const handleTemporaryBlock = async () => {
+  const handleTemporaryBlock = async (durationOverride?: number) => {
     try {
-      const duration = parseInt(tempBlockSeconds, 10)
-      if (isNaN(duration) || duration <= 0) {
-        Alert.alert('Error', 'Please enter a valid number of seconds')
+      if (blockedPackages.length === 0) {
+        console.log('Cannot block: No apps selected')
         return
       }
 
-      await DeviceActivityAndroid.temporaryBlock(duration, {
-        title: 'Temporary Block',
-        message: `Apps blocked for ${Math.floor(duration / 60)} minutes`,
-        ctaText: 'Dismiss',
-      })
-      setSessionActive(true)
-      Alert.alert(
-        'Success',
-        `Apps blocked for ${Math.floor(duration / 60)} minutes. Blocking will end automatically.`
+      const duration = durationOverride !== undefined
+        ? durationOverride
+        : parseInt(tempBlockSeconds, 10)
+
+      console.log(`[TemporaryBlock] Input: ${tempBlockSeconds}, Parsed duration: ${duration}, Override: ${durationOverride}`)
+
+      if (isNaN(duration) || duration <= 0) {
+        console.log('Please enter a valid number of seconds')
+        return
+      }
+
+      const endsAt = Date.now() + duration * 1000
+
+      // Format duration for display
+      const durationText = duration >= 60
+        ? `${Math.floor(duration / 60)} minutes`
+        : `${duration} seconds`
+
+      console.log(`[TemporaryBlock] Starting session with duration: ${duration}s, endsAt: ${new Date(endsAt).toISOString()}`)
+
+      await DeviceActivityAndroid.startSession(
+        {
+          id: 'temp-block-session',
+          blockedPackages: blockedPackages,
+          endsAt: endsAt,
+        },
+        {
+          title: 'Temporary Block',
+          message: `Apps blocked for ${durationText}`,
+          ctaText: 'Dismiss',
+        }
       )
+
+      setSessionActive(true)
+      setActiveTimer({
+        type: 'block',
+        startTime: Date.now(),
+        durationSeconds: duration,
+      })
+
+      console.log(`[TemporaryBlock] Session started successfully. Should end at ${new Date(endsAt).toLocaleTimeString()}`)
+
+      if (durationOverride === undefined) {
+        console.log(`Apps blocked for ${durationText}. Blocking will end automatically.`)
+      }
     } catch (error: any) {
-      Alert.alert('Error', `Failed to temporarily block: ${error.message}`)
-      console.error(error)
+      console.error(`Failed to temporarily block: ${error.message}`)
     }
   }
 
@@ -256,10 +367,11 @@ export default function App() {
     try {
       await DeviceActivityAndroid.unblockAllApps()
       setSessionActive(false)
-      Alert.alert('Success', 'All apps unblocked!')
+      setActiveTimer(null) // Clear any active timer
+      setTempUnblockTimeRemaining(null) // Clear countdown display
+      console.log('All apps unblocked!')
     } catch (error: any) {
-      Alert.alert('Error', `Failed to unblock apps: ${error.message}`)
-      console.error(error)
+      console.error(`Failed to unblock apps: ${error.message}`)
     }
   }
 
@@ -267,8 +379,7 @@ export default function App() {
     try {
       const status = await DeviceActivityAndroid.getBlockStatus()
       console.log('📊 Block Status:', status)
-      Alert.alert(
-        'Block Status',
+      console.log(
         `Blocking: ${status.isBlocking ? 'Yes' : 'No'}\n` +
           `Active Sessions: ${status.activeSessionCount}\n` +
           `Session IDs: ${status.activeSessions.join(', ') || 'None'}\n` +
@@ -276,38 +387,51 @@ export default function App() {
           `Current App: ${status.currentForegroundApp || 'Unknown'}`
       )
     } catch (error: any) {
-      Alert.alert('Error', `Failed to get status: ${error.message}`)
-      console.error(error)
+      console.error(`Failed to get status: ${error.message}`)
     }
   }
 
-  const temporaryUnblock = async () => {
+  const temporaryUnblock = async (durationOverride?: number) => {
     try {
-      const duration = parseInt(tempUnblockSeconds, 10)
+      // Check if blocking is active
+      if (!sessionActive) {
+        console.log('You must block apps first before using temporary unblock')
+        return
+      }
+
+      const duration = durationOverride !== undefined
+        ? durationOverride
+        : parseInt(tempUnblockSeconds, 10)
+
       if (isNaN(duration) || duration <= 0) {
-        Alert.alert('Error', 'Please enter a valid number of seconds')
+        console.log('Please enter a valid number of seconds')
         return
       }
 
       await DeviceActivityAndroid.temporaryUnblock(duration)
       setTempUnblockTimeRemaining(duration)
-      Alert.alert(
-        'Success',
-        `Apps unblocked for ${duration} seconds. Blocking will resume automatically.`
-      )
+      setActiveTimer({
+        type: 'unblock',
+        startTime: Date.now(),
+        durationSeconds: duration,
+      })
+
+      if (durationOverride === undefined) {
+        console.log(`Apps unblocked for ${duration} seconds. Blocking will resume automatically.`)
+      }
 
       // Listen for when blocking resumes
       const subscription = DeviceActivityAndroid.addListener(event => {
         if (event.type === 'temporary_unblock_ended') {
-          Alert.alert('Notice', 'Blocking has resumed!')
+          console.log('Blocking has resumed!')
           setTempUnblockTimeRemaining(null)
           setSessionActive(true)
+          setActiveTimer(null) // Clear timer when it expires
           subscription.remove()
         }
       })
     } catch (error: any) {
-      Alert.alert('Error', `Failed to temporarily unblock: ${error.message}`)
-      console.error(error)
+      console.error(`Failed to temporarily unblock: ${error.message}`)
     }
   }
 
@@ -368,15 +492,17 @@ export default function App() {
 
           <View style={[styles.row, styles.rowWithSpacing]}>
             <TouchableOpacity
-              style={[styles.button, styles.buttonOrange]}
+              style={[styles.button, styles.buttonOrange, sessionActive && styles.buttonDisabled]}
               onPress={blockAllApps}
+              disabled={sessionActive}
             >
               <Text style={styles.buttonText}>Block All Apps</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.button, styles.buttonBlue]}
+              style={[styles.button, styles.buttonBlue, !sessionActive && styles.buttonDisabled]}
               onPress={unblockAllApps}
+              disabled={!sessionActive}
             >
               <Text style={styles.buttonText}>Unblock All</Text>
             </TouchableOpacity>
@@ -400,11 +526,11 @@ export default function App() {
                 value={tempUnblockSeconds}
                 onChangeText={setTempUnblockSeconds}
                 keyboardType='numeric'
-                placeholder='60'
+                placeholder='15'
               />
               <TouchableOpacity
                 style={[styles.button, styles.buttonTeal, styles.tempUnblockButton]}
-                onPress={temporaryUnblock}
+                onPress={() => temporaryUnblock()}
               >
                 <Text style={styles.buttonText}>Start</Text>
               </TouchableOpacity>
@@ -433,11 +559,11 @@ export default function App() {
                 value={tempBlockSeconds}
                 onChangeText={setTempBlockSeconds}
                 keyboardType='numeric'
-                placeholder='300'
+                placeholder='15'
               />
               <TouchableOpacity
                 style={[styles.button, styles.buttonRed, styles.tempBlockButton]}
-                onPress={handleTemporaryBlock}
+                onPress={() => handleTemporaryBlock()}
               >
                 <Text style={styles.buttonText}>Block</Text>
               </TouchableOpacity>
@@ -445,14 +571,13 @@ export default function App() {
           </View>
         </View>
 
-        {/* Focus Session */}
+        {/* Select Apps */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Focus Session</Text>
+          <Text style={styles.sectionTitle}>Select Apps</Text>
 
           <TouchableOpacity
             style={styles.selectAppsButton}
             onPress={openAppPicker}
-            disabled={sessionActive}
           >
             <Text style={styles.selectAppsText}>
               {blockedPackages.length === 0
@@ -482,35 +607,6 @@ export default function App() {
               ))}
             </ScrollView>
           )}
-
-          <View style={styles.row}>
-            <TouchableOpacity
-              style={[
-                styles.button,
-                styles.buttonGreen,
-                (sessionActive || blockedPackages.length === 0) && styles.buttonDisabled,
-              ]}
-              onPress={startFocusSession}
-              disabled={sessionActive || blockedPackages.length === 0}
-            >
-              <Text style={styles.buttonText}>Start Focus</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.button, styles.buttonRed, !sessionActive && styles.buttonDisabled]}
-              onPress={stopFocusSession}
-              disabled={!sessionActive}
-            >
-              <Text style={styles.buttonText}>Stop</Text>
-            </TouchableOpacity>
-          </View>
-
-          {blockedPackages.length === 0 && !sessionActive && (
-            <Text style={styles.helpTextWarning}>
-              ⚠️ Please select apps before starting a focus session
-            </Text>
-          )}
-          {sessionActive && <Text style={styles.activeText}>✓ Session Active</Text>}
         </View>
 
         {/* Mode Toggle */}
