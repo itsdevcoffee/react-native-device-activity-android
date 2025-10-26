@@ -41,6 +41,11 @@ class BlockerAccessibilityService : AccessibilityService() {
   private val checkInterval = 500L // Check every 500ms for responsiveness
   private var lastForegroundPackage: String? = null
 
+  // Countdown timer for temporary blocks
+  private var countdownTextView: TextView? = null
+  private var countdownRunnable: Runnable? = null
+  private var sessionEndTime: Long? = null
+
   companion object {
     var instance: BlockerAccessibilityService? = null
     var currentForegroundPackage: String? = null
@@ -423,6 +428,61 @@ class BlockerAccessibilityService : AccessibilityService() {
   }
 
   /**
+   * Format remaining time in a human-readable format.
+   * Examples: "5m 30s", "45s", "1h 23m"
+   */
+  private fun formatRemainingTime(remainingMs: Long): String {
+    val totalSeconds = (remainingMs / 1000).toInt()
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+
+    return when {
+      hours > 0 -> String.format("%dh %dm", hours, minutes)
+      minutes > 0 -> String.format("%dm %ds", minutes, seconds)
+      else -> String.format("%ds", seconds)
+    }
+  }
+
+  /**
+   * Start the countdown timer for temporary blocks.
+   */
+  private fun startCountdown(endTime: Long) {
+    sessionEndTime = endTime
+
+    countdownRunnable = object : Runnable {
+      override fun run() {
+        val now = System.currentTimeMillis()
+        val remaining = endTime - now
+
+        if (remaining > 0) {
+          val formattedTime = formatRemainingTime(remaining)
+          countdownTextView?.text = "Unblocks in $formattedTime"
+
+          // Schedule next update in 1 second
+          handler.postDelayed(this, 1000)
+        } else {
+          // Time's up - the cleanup will be handled by cleanupExpiredSessions
+          countdownTextView?.text = "Unblocking..."
+        }
+      }
+    }
+
+    // Start the countdown immediately
+    countdownRunnable?.let { handler.post(it) }
+  }
+
+  /**
+   * Stop the countdown timer.
+   */
+  private fun stopCountdown() {
+    countdownRunnable?.let { handler.removeCallbacks(it) }
+    countdownRunnable = null
+    countdownTextView = null
+    sessionEndTime = null
+  }
+
+  /**
    * Show the blocking overlay with the specified style.
    */
   private fun showOverlay(sessionId: String, blockedPackage: String) {
@@ -502,7 +562,25 @@ class BlockerAccessibilityService : AccessibilityService() {
         textSize = 18f
         setTextColor(0xFFCCCCCC.toInt())
         gravity = android.view.Gravity.CENTER
-        setPadding(0, 0, 0, 48)
+        setPadding(0, 0, 0, 24)
+      }
+
+      // Add countdown for temporary blocks
+      val session = sessions[sessionId]
+      val countdownView = if (session?.endsAt != null) {
+        TextView(this).apply {
+          text = "Calculating..."
+          textSize = 16f
+          setTextColor(0xFFFFAA00.toInt()) // Orange color for countdown
+          gravity = android.view.Gravity.CENTER
+          setPadding(0, 0, 0, 24)
+          typeface = android.graphics.Typeface.MONOSPACE
+        }.also {
+          countdownTextView = it
+          startCountdown(session.endsAt)
+        }
+      } else {
+        null
       }
 
       // Add dismiss button
@@ -576,6 +654,12 @@ class BlockerAccessibilityService : AccessibilityService() {
 
       linearLayout.addView(titleView)
       linearLayout.addView(messageView)
+
+      // Add countdown view if it exists (temporary block)
+      if (countdownView != null) {
+        linearLayout.addView(countdownView)
+      }
+
       linearLayout.addView(buttonView)
 
       // Add margin and append the second button
@@ -614,6 +698,9 @@ class BlockerAccessibilityService : AccessibilityService() {
     if (!isOverlayShowing || overlayView == null) return
 
     try {
+      // Stop countdown timer if running
+      stopCountdown()
+
       windowManager?.removeView(overlayView)
       overlayView = null
       isOverlayShowing = false
