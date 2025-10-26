@@ -916,11 +916,55 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
     return SessionState(id, blocked, allow, startsAt, endsAt)
   }
 
+  /**
+   * Parse RGB color from ReadableMap.
+   */
+  private fun parseRGBColor(map: ReadableMap?): BlockerAccessibilityService.RGBColor? {
+    if (map == null) return null
+
+    return try {
+      BlockerAccessibilityService.RGBColor(
+        red = map.getInt("red"),
+        green = map.getInt("green"),
+        blue = map.getInt("blue"),
+        alpha = if (map.hasKey("alpha")) map.getInt("alpha") else 255
+      )
+    } catch (e: Exception) {
+      android.util.Log.w("RNDeviceActivity", "Failed to parse RGB color", e)
+      null
+    }
+  }
+
   private fun parseShieldStyle(map: ReadableMap): BlockerAccessibilityService.ShieldStyle {
     return BlockerAccessibilityService.ShieldStyle(
-      title = map.getString("title") ?: "App Blocked",
-      message = map.getString("message") ?: "This app is currently blocked.",
-      ctaText = map.getString("ctaText") ?: "Dismiss"
+      // Text content
+      title = map.getString("title") ?: "Stay Focused",
+      subtitle = map.getString("subtitle"),
+      message = map.getString("message"),
+
+      // Button configuration
+      primaryButtonLabel = map.getString("primaryButtonLabel") ?: "Return to Focus",
+      secondaryButtonLabel = map.getString("secondaryButtonLabel"),
+      ctaText = map.getString("ctaText"),
+
+      // Text colors
+      titleColor = if (map.hasKey("titleColor")) parseRGBColor(map.getMap("titleColor")) else null,
+      subtitleColor = if (map.hasKey("subtitleColor")) parseRGBColor(map.getMap("subtitleColor")) else null,
+      primaryButtonLabelColor = if (map.hasKey("primaryButtonLabelColor")) parseRGBColor(map.getMap("primaryButtonLabelColor")) else null,
+      secondaryButtonLabelColor = if (map.hasKey("secondaryButtonLabelColor")) parseRGBColor(map.getMap("secondaryButtonLabelColor")) else null,
+
+      // Background colors
+      backgroundColor = if (map.hasKey("backgroundColor")) parseRGBColor(map.getMap("backgroundColor")) else null,
+      primaryButtonBackgroundColor = if (map.hasKey("primaryButtonBackgroundColor")) parseRGBColor(map.getMap("primaryButtonBackgroundColor")) else null,
+      secondaryButtonBackgroundColor = if (map.hasKey("secondaryButtonBackgroundColor")) parseRGBColor(map.getMap("secondaryButtonBackgroundColor")) else null,
+
+      // Icon configuration
+      iconTint = if (map.hasKey("iconTint")) parseRGBColor(map.getMap("iconTint")) else null,
+      primaryImagePath = map.getString("primaryImagePath"),
+      iconSystemName = map.getString("iconSystemName"),
+
+      // Blur effect
+      backgroundBlurStyle = map.getString("backgroundBlurStyle") ?: "light"
     )
   }
 

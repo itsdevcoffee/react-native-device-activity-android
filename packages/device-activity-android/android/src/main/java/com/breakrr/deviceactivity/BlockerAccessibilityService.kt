@@ -145,11 +145,7 @@ class BlockerAccessibilityService : AccessibilityService() {
      * Get the shield style for a session.
      */
     fun getShieldStyle(sessionId: String): ShieldStyle {
-      return shieldStyles[sessionId] ?: ShieldStyle(
-        title = "Stay Focused",
-        message = "This app is blocked during your focus session.",
-        ctaText = "Return to Focus"
-      )
+      return shieldStyles[sessionId] ?: ShieldStyle()
     }
 
     /**
@@ -204,11 +200,60 @@ class BlockerAccessibilityService : AccessibilityService() {
     }
   }
 
+  data class RGBColor(
+    val red: Int,
+    val green: Int,
+    val blue: Int,
+    val alpha: Int = 255
+  ) {
+    fun toAndroidColor(): Int {
+      return android.graphics.Color.argb(alpha, red, green, blue)
+    }
+  }
+
   data class ShieldStyle(
-    val title: String,
-    val message: String,
-    val ctaText: String
-  )
+    // Text content
+    val title: String = "Stay Focused",
+    val subtitle: String? = null,
+    val message: String? = null, // Deprecated in favor of subtitle
+
+    // Button configuration
+    val primaryButtonLabel: String = "Return to Focus",
+    val secondaryButtonLabel: String? = null,
+
+    // Text colors
+    val titleColor: RGBColor? = null,
+    val subtitleColor: RGBColor? = null,
+    val primaryButtonLabelColor: RGBColor? = null,
+    val secondaryButtonLabelColor: RGBColor? = null,
+
+    // Background colors
+    val backgroundColor: RGBColor? = null,
+    val primaryButtonBackgroundColor: RGBColor? = null,
+    val secondaryButtonBackgroundColor: RGBColor? = null,
+
+    // Icon configuration
+    val iconTint: RGBColor? = null,
+    val primaryImagePath: String? = null,
+    val iconSystemName: String? = null,
+
+    // Blur effect (Android: light, dark, or none)
+    val backgroundBlurStyle: String? = "light", // "light", "dark", "none"
+
+    // Legacy support
+    @Deprecated("Use subtitle instead")
+    val ctaText: String? = null
+  ) {
+    // Helper to resolve subtitle with fallback to message or default
+    fun resolveSubtitle(): String {
+      return subtitle ?: message ?: "This app is blocked during your focus session."
+    }
+
+    // Helper to resolve primary button text with fallback
+    fun resolvePrimaryButtonLabel(): String {
+      return ctaText ?: primaryButtonLabel
+    }
+  }
 
   override fun onCreate() {
     super.onCreate()
@@ -483,6 +528,40 @@ class BlockerAccessibilityService : AccessibilityService() {
   }
 
   /**
+   * Create a modern styled button with rounded corners.
+   */
+  private fun createStyledButton(
+    text: String,
+    backgroundColor: Int,
+    textColor: Int,
+    onClick: () -> Unit
+  ): Button {
+    return Button(this).apply {
+      this.text = text
+      textSize = 17f
+      val verticalPadding = (16 * resources.displayMetrics.density).toInt()
+      setPadding(0, verticalPadding, 0, verticalPadding)
+      setTextColor(textColor)
+      minHeight = (56 * resources.displayMetrics.density).toInt()
+
+      // Create rounded background
+      val drawable = android.graphics.drawable.GradientDrawable().apply {
+        shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+        setColor(backgroundColor)
+        cornerRadius = 14f * resources.displayMetrics.density
+      }
+      background = drawable
+
+      setOnClickListener { onClick() }
+
+      // Remove default button styling
+      isAllCaps = false
+      stateListAnimator = null
+      gravity = android.view.Gravity.CENTER
+    }
+  }
+
+  /**
    * Show the blocking overlay with the specified style.
    */
   private fun showOverlay(sessionId: String, blockedPackage: String) {
@@ -503,66 +582,104 @@ class BlockerAccessibilityService : AccessibilityService() {
         height = WindowManager.LayoutParams.MATCH_PARENT
       }
 
-      // Create overlay container
-      val container = FrameLayout(this)
-      container.setBackgroundColor(0xE6000000.toInt())
-
       // Get shield style
       val style = getShieldStyle(sessionId)
 
-      // Create vertical LinearLayout for stacking views
-      val linearLayout = android.widget.LinearLayout(this).apply {
+      // Create overlay container with styled background
+      val container = FrameLayout(this)
+      val backgroundColor = when {
+        style.backgroundColor != null -> style.backgroundColor.toAndroidColor()
+        style.backgroundBlurStyle == "dark" -> 0xE6000000.toInt()
+        style.backgroundBlurStyle == "light" -> 0xF0FFFFFF.toInt()
+        else -> 0xE6000000.toInt()
+      }
+      container.setBackgroundColor(backgroundColor)
+
+      // Create vertical LinearLayout for content (icon, title, subtitle, countdown)
+      val contentLayout = android.widget.LinearLayout(this).apply {
         orientation = android.widget.LinearLayout.VERTICAL
         gravity = android.view.Gravity.CENTER
         setPadding(40, 40, 40, 40)
       }
 
-      // Get app icon and add it with iOS-style grayscale treatment
-      try {
-        val packageManager = applicationContext.packageManager
-        val appIcon = packageManager.getApplicationIcon(blockedPackage)
+      // Create vertical LinearLayout for buttons at bottom
+      val buttonLayout = android.widget.LinearLayout(this).apply {
+        orientation = android.widget.LinearLayout.VERTICAL
+        setPadding(24, 0, 24, 32)
+      }
 
+      // Get app icon or custom image
+      try {
         val iconSize = (120 * resources.displayMetrics.density).toInt()
         val iconMargin = (32 * resources.displayMetrics.density).toInt()
 
         val iconView = ImageView(this).apply {
-          setImageDrawable(appIcon)
-
-          // Apply grayscale filter for iOS-style appearance
-          val colorMatrix = ColorMatrix().apply {
-            setSaturation(0f) // Remove all color (grayscale)
+          // Try to load custom image first, fallback to app icon
+          if (style.primaryImagePath != null) {
+            try {
+              // Load custom image from path (could be from assets or file system)
+              val drawable = android.graphics.drawable.Drawable.createFromPath(style.primaryImagePath)
+              if (drawable != null) {
+                setImageDrawable(drawable)
+              } else {
+                // Fallback to app icon if custom image fails
+                val packageManager = applicationContext.packageManager
+                val appIcon = packageManager.getApplicationIcon(blockedPackage)
+                setImageDrawable(appIcon)
+              }
+            } catch (e: Exception) {
+              android.util.Log.w("BlockerService", "Could not load custom image, using app icon", e)
+              val packageManager = applicationContext.packageManager
+              val appIcon = packageManager.getApplicationIcon(blockedPackage)
+              setImageDrawable(appIcon)
+            }
+          } else {
+            // Use app icon
+            val packageManager = applicationContext.packageManager
+            val appIcon = packageManager.getApplicationIcon(blockedPackage)
+            setImageDrawable(appIcon)
           }
-          colorFilter = ColorMatrixColorFilter(colorMatrix)
 
-          // Set alpha for darkened appearance
-          alpha = 0.4f // Darken the icon
+          // Apply icon tint if specified, otherwise grayscale
+          if (style.iconTint != null) {
+            setColorFilter(style.iconTint.toAndroidColor(), android.graphics.PorterDuff.Mode.SRC_IN)
+          } else {
+            // Default iOS-style grayscale treatment
+            val colorMatrix = ColorMatrix().apply {
+              setSaturation(0f)
+            }
+            colorFilter = ColorMatrixColorFilter(colorMatrix)
+            alpha = 0.4f
+          }
         }
 
         val iconParams = android.widget.LinearLayout.LayoutParams(iconSize, iconSize).apply {
           bottomMargin = iconMargin
         }
-        linearLayout.addView(iconView, iconParams)
+        contentLayout.addView(iconView, iconParams)
       } catch (e: Exception) {
-        android.util.Log.w("BlockerService", "Could not load app icon for $blockedPackage", e)
+        android.util.Log.w("BlockerService", "Could not load icon", e)
       }
 
       // Add title
       val titleView = TextView(this).apply {
         text = style.title
         textSize = 28f
-        setTextColor(0xFFFFFFFF.toInt())
+        val defaultTitleColor = if (style.backgroundBlurStyle == "light") 0xFF2A2A2A.toInt() else 0xFFFFFFFF.toInt()
+        setTextColor(style.titleColor?.toAndroidColor() ?: defaultTitleColor)
         gravity = android.view.Gravity.CENTER
-        setPadding(0, 0, 0, 24)
+        setPadding(0, 0, 0, 16)
         typeface = android.graphics.Typeface.DEFAULT_BOLD
       }
 
-      // Add message
-      val messageView = TextView(this).apply {
-        text = style.message
-        textSize = 18f
-        setTextColor(0xFFCCCCCC.toInt())
+      // Add subtitle/message
+      val subtitleView = TextView(this).apply {
+        text = style.resolveSubtitle()
+        textSize = 16f
+        val defaultSubtitleColor = if (style.backgroundBlurStyle == "light") 0xFF6D6D6D.toInt() else 0xFFCCCCCC.toInt()
+        setTextColor(style.subtitleColor?.toAndroidColor() ?: defaultSubtitleColor)
         gravity = android.view.Gravity.CENTER
-        setPadding(0, 0, 0, 24)
+        setPadding(32, 0, 32, 24)
       }
 
       // Add countdown for temporary blocks
@@ -583,49 +700,47 @@ class BlockerAccessibilityService : AccessibilityService() {
         null
       }
 
-      // Add dismiss button
-      val buttonView = Button(this).apply {
-        text = style.ctaText
-        textSize = 16f
-        setPadding(48, 24, 48, 24)
-        setBackgroundColor(0xFF2196F3.toInt())
-        setTextColor(0xFFFFFFFF.toInt())
-        setOnClickListener {
-          // Record dismissal for cooldown
-          lastDismissedPackage = blockedPackage
-          lastDismissedTime = System.currentTimeMillis()
+      // Add primary dismiss button
+      val defaultPrimaryBg = if (style.backgroundBlurStyle == "light") 0xFFFFE3EC.toInt() else 0xFF2196F3.toInt()
+      val defaultPrimaryText = if (style.backgroundBlurStyle == "light") 0xFF7A284B.toInt() else 0xFFFFFFFF.toInt()
 
-          hideOverlay()
-          RNDeviceActivityAndroidModule.sendEvent("block_dismissed", blockedPackage, sessionId)
+      val primaryButton = createStyledButton(
+        text = style.resolvePrimaryButtonLabel(),
+        backgroundColor = style.primaryButtonBackgroundColor?.toAndroidColor() ?: defaultPrimaryBg,
+        textColor = style.primaryButtonLabelColor?.toAndroidColor() ?: defaultPrimaryText
+      ) {
+        // Record dismissal for cooldown
+        lastDismissedPackage = blockedPackage
+        lastDismissedTime = System.currentTimeMillis()
 
-          // Return to home screen
-          val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-          }
-          startActivity(homeIntent)
+        hideOverlay()
+        RNDeviceActivityAndroidModule.sendEvent("block_dismissed", blockedPackage, sessionId)
+
+        // Return to home screen
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+          addCategory(Intent.CATEGORY_HOME)
+          flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
+        startActivity(homeIntent)
       }
 
-      // Add "Go to Example App" button
-      val goToAppButton = Button(this).apply {
-        text = "Go to Example App"
-        textSize = 16f
-        setPadding(48, 24, 48, 24)
-        setBackgroundColor(0xFF4CAF50.toInt()) // Green color
-        setTextColor(0xFFFFFFFF.toInt())
-        val topMargin = (16 * resources.displayMetrics.density).toInt()
-        (layoutParams as? android.widget.LinearLayout.LayoutParams)?.topMargin = topMargin
+      // Add optional secondary button
+      val secondaryButton = if (style.secondaryButtonLabel != null) {
+        val defaultSecondaryText = if (style.backgroundBlurStyle == "light") 0xFF7C7C7C.toInt() else 0xFFCCCCCC.toInt()
 
-        setOnClickListener {
+        createStyledButton(
+          text = style.secondaryButtonLabel,
+          backgroundColor = style.secondaryButtonBackgroundColor?.toAndroidColor() ?: android.graphics.Color.TRANSPARENT,
+          textColor = style.secondaryButtonLabelColor?.toAndroidColor() ?: defaultSecondaryText
+        ) {
           // Record dismissal for cooldown
           lastDismissedPackage = blockedPackage
           lastDismissedTime = System.currentTimeMillis()
 
           hideOverlay()
-          RNDeviceActivityAndroidModule.sendEvent("block_dismissed", blockedPackage, sessionId)
+          RNDeviceActivityAndroidModule.sendEvent("secondary_action", blockedPackage, sessionId)
 
-          // Launch the example app
+          // Launch the host app (could be used for "Unlock" or similar actions)
           try {
             val launchIntent = packageManager.getLaunchIntentForPackage(applicationContext.packageName)
             if (launchIntent != null) {
@@ -641,7 +756,7 @@ class BlockerAccessibilityService : AccessibilityService() {
               startActivity(homeIntent)
             }
           } catch (e: Exception) {
-            android.util.Log.e("BlockerService", "Failed to launch example app", e)
+            android.util.Log.e("BlockerService", "Failed to launch host app", e)
             // Fallback to home screen
             val homeIntent = Intent(Intent.ACTION_MAIN).apply {
               addCategory(Intent.CATEGORY_HOME)
@@ -650,35 +765,54 @@ class BlockerAccessibilityService : AccessibilityService() {
             startActivity(homeIntent)
           }
         }
+      } else {
+        null
       }
 
-      linearLayout.addView(titleView)
-      linearLayout.addView(messageView)
+      // Add content views to content layout
+      contentLayout.addView(titleView)
+      contentLayout.addView(subtitleView)
 
       // Add countdown view if it exists (temporary block)
       if (countdownView != null) {
-        linearLayout.addView(countdownView)
+        contentLayout.addView(countdownView)
       }
 
-      linearLayout.addView(buttonView)
-
-      // Add margin and append the second button
-      val goToAppParams = android.widget.LinearLayout.LayoutParams(
-        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+      // Add primary button with full width
+      val primaryButtonParams = android.widget.LinearLayout.LayoutParams(
+        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
         android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
       ).apply {
-        topMargin = (16 * resources.displayMetrics.density).toInt()
+        bottomMargin = (12 * resources.displayMetrics.density).toInt()
       }
-      linearLayout.addView(goToAppButton, goToAppParams)
+      buttonLayout.addView(primaryButton, primaryButtonParams)
 
-      // Add LinearLayout centered in container
+      // Add secondary button if it exists with full width
+      if (secondaryButton != null) {
+        val secondaryButtonParams = android.widget.LinearLayout.LayoutParams(
+          android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+          android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        buttonLayout.addView(secondaryButton, secondaryButtonParams)
+      }
+
+      // Add content layout centered in container
       val contentParams = FrameLayout.LayoutParams(
         FrameLayout.LayoutParams.WRAP_CONTENT,
         FrameLayout.LayoutParams.WRAP_CONTENT
       ).apply {
         gravity = android.view.Gravity.CENTER
       }
-      container.addView(linearLayout, contentParams)
+      container.addView(contentLayout, contentParams)
+
+      // Add button layout at bottom
+      val buttonParams = FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams.MATCH_PARENT,
+        FrameLayout.LayoutParams.WRAP_CONTENT
+      ).apply {
+        gravity = android.view.Gravity.BOTTOM
+      }
+      container.addView(buttonLayout, buttonParams)
 
       overlayView = container
       windowManager?.addView(container, layoutParams)

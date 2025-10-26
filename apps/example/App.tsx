@@ -13,10 +13,27 @@ import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import DeviceActivityAndroid, {
   type PermissionsStatus,
+  type ShieldStyle,
   getCategoryLabel,
 } from '@breakrr/react-native-device-activity-android'
 import { AppSelector, type AppItem } from './components/AppSelector'
 import { storageHelpers } from './storage'
+
+// Modern iOS-style shield configuration
+const SHIELD_STYLE: ShieldStyle = {
+  title: '🔒 focus mode',
+  subtitle: 'gentle shield active',
+  primaryButtonLabel: 'Close',
+  titleColor: { red: 42, green: 42, blue: 42 },
+  subtitleColor: { red: 109, green: 109, blue: 109 },
+  backgroundColor: { red: 255, green: 253, blue: 249 },
+  backgroundBlurStyle: 'light',
+  iconTint: { red: 96, green: 167, blue: 164 },
+  primaryButtonBackgroundColor: { red: 255, green: 227, blue: 236 },
+  primaryButtonLabelColor: { red: 122, green: 40, blue: 75 },
+  secondaryButtonLabel: 'Unlock',
+  secondaryButtonLabelColor: { red: 124, green: 124, blue: 124 },
+}
 
 export default function App() {
   const [permissions, setPermissions] = useState<PermissionsStatus>({
@@ -173,11 +190,7 @@ export default function App() {
               blockedPackages: blockedPackages,
               endsAt: undefined,
             },
-            {
-              title: 'Selected Apps Blocked',
-              message: 'Selected apps are blocked indefinitely until you unblock them.',
-              ctaText: 'Dismiss',
-            }
+            SHIELD_STYLE
           )
         }
       } catch (error: any) {
@@ -271,11 +284,7 @@ export default function App() {
           blockedPackages,
           endsAt: Date.now() + 5 * 60 * 1000,
         },
-        {
-          title: 'Stay Focused',
-          message: 'This app is blocked during your focus session.',
-          ctaText: 'Return to Focus',
-        }
+        SHIELD_STYLE
       )
 
       setSessionActive(true)
@@ -320,11 +329,7 @@ export default function App() {
           blockedPackages: blockedPackages,
           endsAt: undefined, // Indefinite blocking
         },
-        {
-          title: 'Selected Apps Blocked',
-          message: 'Selected apps are blocked indefinitely until you unblock them.',
-          ctaText: 'Dismiss',
-        }
+        SHIELD_STYLE
       )
       setSessionActive(true)
       setActiveTimer(null) // Clear any timer since this is indefinite
@@ -368,11 +373,7 @@ export default function App() {
           blockedPackages: blockedPackages,
           endsAt: endsAt,
         },
-        {
-          title: 'Temporary Block',
-          message: `Apps blocked for ${durationText}`,
-          ctaText: 'Dismiss',
-        }
+        SHIELD_STYLE
       )
 
       setSessionActive(true)
@@ -493,11 +494,7 @@ export default function App() {
           blockedPackages: blockedPackages,
           endsAt: undefined, // Indefinite blocking
         },
-        {
-          title: 'Selected Apps Blocked',
-          message: 'Selected apps are blocked indefinitely until you unblock them.',
-          ctaText: 'Dismiss',
-        }
+        SHIELD_STYLE
       )
 
       setSessionActive(true)

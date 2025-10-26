@@ -9,10 +9,46 @@ export type SessionConfig = {
   reason?: string
 }
 
+export type RGBColor = {
+  red: number
+  green: number
+  blue: number
+  alpha?: number
+}
+
+export type BackgroundBlurStyle = 'light' | 'dark' | 'none'
+
 export type ShieldStyle = {
+  // Text content
   title?: string
+  subtitle?: string
+  /** @deprecated Use subtitle instead */
   message?: string
+
+  // Button configuration
+  primaryButtonLabel?: string
+  secondaryButtonLabel?: string
+  /** @deprecated Use primaryButtonLabel instead */
   ctaText?: string
+
+  // Text colors
+  titleColor?: RGBColor
+  subtitleColor?: RGBColor
+  primaryButtonLabelColor?: RGBColor
+  secondaryButtonLabelColor?: RGBColor
+
+  // Background colors
+  backgroundColor?: RGBColor
+  primaryButtonBackgroundColor?: RGBColor
+  secondaryButtonBackgroundColor?: RGBColor
+
+  // Icon configuration
+  iconTint?: RGBColor
+  primaryImagePath?: string
+  iconSystemName?: string
+
+  // Blur effect (Android: light, dark, or none)
+  backgroundBlurStyle?: BackgroundBlurStyle
 }
 
 export type PermissionsStatus = {
@@ -30,6 +66,7 @@ export type ForegroundApp = {
 export type BlockEvent =
   | { type: 'block_shown'; sessionId: string; ts: number }
   | { type: 'block_dismissed'; sessionId: string; ts: number }
+  | { type: 'secondary_action'; sessionId: string; ts: number }
   | { type: 'app_attempt'; packageName: string; sessionId: string; ts: number }
   | { type: 'service_state'; running: boolean; ts: number }
   | { type: 'temporary_unblock_ended'; ts: number }
