@@ -122,14 +122,15 @@ class BlockerAccessibilityService : AccessibilityService() {
           }
         }
 
-        // If we removed sessions, immediately check if overlay should still be shown
+        // If we removed sessions and no more sessions are blocking, hide the overlay
         val serviceInstance = instance
-        val foregroundPkg = currentForegroundPackage
-        if (serviceInstance != null && foregroundPkg != null) {
-          val (shouldBlock, _) = shouldBlockPackage(foregroundPkg)
-          if (!shouldBlock) {
-            android.util.Log.d("BlockerService", "Session expired - hiding overlay for $foregroundPkg")
+        if (serviceInstance != null) {
+          // Check if there are any remaining active sessions
+          if (!hasActiveSessions()) {
+            android.util.Log.d("BlockerService", "All sessions expired - hiding overlay")
             serviceInstance.hideOverlay()
+          } else {
+            android.util.Log.d("BlockerService", "Sessions expired but other sessions still active")
           }
         }
       }
