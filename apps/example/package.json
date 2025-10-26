@@ -17,7 +17,11 @@
     "expo-status-bar": "~2.0.0",
     "expo-system-ui": "~4.0.6",
     "react": "19.1.0",
-    "react-native": "0.81.5"
+    "react-native": "0.81.5",
+    "react-native-reanimated": "~4.1.1",
+    "react-native-safe-area-context": "^5.6.1",
+    "react-native-svg": "15.12.1",
+    "react-native-worklets": "^0.6.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.0",
