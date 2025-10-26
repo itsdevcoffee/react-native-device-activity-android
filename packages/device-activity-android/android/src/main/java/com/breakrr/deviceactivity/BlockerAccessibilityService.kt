@@ -97,6 +97,57 @@ class BlockerAccessibilityService : AccessibilityService() {
         ctaText = "Return to Focus"
       )
     }
+
+    /**
+     * Check if there are any active sessions.
+     */
+    fun hasActiveSessions(): Boolean {
+      val now = System.currentTimeMillis()
+      return sessions.values.any { it.isActive(now) }
+    }
+
+    /**
+     * Get count of active sessions.
+     */
+    fun getActiveSessionCount(): Int {
+      val now = System.currentTimeMillis()
+      return sessions.values.count { it.isActive(now) }
+    }
+
+    /**
+     * Get IDs of active sessions.
+     */
+    fun getActiveSessionIds(): com.facebook.react.bridge.WritableArray {
+      val now = System.currentTimeMillis()
+      val array = com.facebook.react.bridge.WritableNativeArray()
+      sessions.values.filter { it.isActive(now) }.forEach { session ->
+        array.pushString(session.id)
+      }
+      return array
+    }
+
+    /**
+     * Get all sessions (for temporary unblock).
+     */
+    fun getAllSessions(): Map<String, SessionState> {
+      return sessions.toMap()
+    }
+
+    /**
+     * Get all shield styles (for temporary unblock).
+     */
+    fun getAllStyles(): Map<String, ShieldStyle> {
+      return shieldStyles.toMap()
+    }
+
+    /**
+     * Clear cooldown state and trigger immediate foreground check.
+     * Used after restoring sessions from temporary unblock.
+     */
+    fun clearCooldownAndCheckNow() {
+      instance?.clearCooldown()
+      instance?.checkForegroundNow()
+    }
   }
 
   data class ShieldStyle(
@@ -138,6 +189,47 @@ class BlockerAccessibilityService : AccessibilityService() {
   override fun onInterrupt() {
     // Called when service is interrupted
     hideOverlay()
+  }
+
+  /**
+   * Clear the cooldown state.
+   * Allows blocked apps to show overlay immediately.
+   */
+  fun clearCooldown() {
+    lastDismissedPackage = null
+    lastDismissedTime = 0
+    android.util.Log.d("BlockerService", "Cooldown cleared")
+  }
+
+  /**
+   * Trigger an immediate foreground check.
+   * Used after restoring sessions to immediately show overlay if needed.
+   */
+  fun checkForegroundNow() {
+    android.util.Log.d("BlockerService", "Immediate foreground check triggered")
+
+    // Run the check synchronously
+    val foregroundPackage = getForegroundApp()
+
+    if (foregroundPackage != null) {
+      android.util.Log.d("BlockerService", "Immediate check - Foreground app: $foregroundPackage")
+
+      // Ignore system packages and launchers
+      val isLauncher = foregroundPackage.contains("launcher", ignoreCase = true)
+      val isSystemUI = foregroundPackage == "com.android.systemui"
+      val isOurApp = foregroundPackage == applicationContext.packageName
+
+      if (!isLauncher && !isSystemUI && !isOurApp) {
+        // Check if this app should be blocked
+        val (shouldBlock, sessionId) = shouldBlockPackage(foregroundPackage)
+
+        if (shouldBlock && sessionId != null) {
+          android.util.Log.d("BlockerService", "Immediate check - Should block $foregroundPackage, showing overlay")
+          showOverlay(sessionId, foregroundPackage)
+          RNDeviceActivityAndroidModule.sendEvent("app_attempt", foregroundPackage, sessionId)
+        }
+      }
+    }
   }
 
   /**

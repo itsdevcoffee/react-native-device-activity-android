@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import {
   StyleSheet,
   Text,
@@ -8,6 +8,7 @@ import {
   Modal,
   ActivityIndicator,
   ScrollView,
+  TextInput,
 } from 'react-native'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
@@ -22,6 +23,7 @@ export default function App() {
     accessibilityEnabled: false,
     overlayEnabled: false,
     usageAccessEnabled: false,
+    scheduleExactAlarmEnabled: false,
   })
   const [blockedPackages, setBlockedPackages] = useState<string[]>([])
   const [sessionActive, setSessionActive] = useState(false)
@@ -29,10 +31,38 @@ export default function App() {
   const [installedApps, setInstalledApps] = useState<AppItem[]>([])
   const [loadingApps, setLoadingApps] = useState(false)
   const [selectorMode, setSelectorMode] = useState<'list' | 'grid'>('list')
+  const [tempUnblockSeconds, setTempUnblockSeconds] = useState('60')
+  const [tempUnblockTimeRemaining, setTempUnblockTimeRemaining] = useState<number | null>(null)
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     checkPermissions()
   }, [])
+
+  // Countdown timer for temporary unblock
+  useEffect(() => {
+    if (tempUnblockTimeRemaining !== null && tempUnblockTimeRemaining > 0) {
+      countdownIntervalRef.current = setInterval(() => {
+        setTempUnblockTimeRemaining(prev => {
+          if (prev === null || prev <= 1) {
+            if (countdownIntervalRef.current) {
+              clearInterval(countdownIntervalRef.current)
+              countdownIntervalRef.current = null
+            }
+            return null
+          }
+          return prev - 1
+        })
+      }, 1000)
+
+      return () => {
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current)
+          countdownIntervalRef.current = null
+        }
+      }
+    }
+  }, [tempUnblockTimeRemaining])
 
   const checkPermissions = async () => {
     try {
@@ -55,6 +85,9 @@ export default function App() {
           break
         case 'usage':
           await DeviceActivityAndroid.requestUsageAccessPermission()
+          break
+        case 'alarm':
+          await DeviceActivityAndroid.requestScheduleExactAlarmPermission()
           break
       }
       setTimeout(checkPermissions, 1000)
@@ -148,6 +181,83 @@ export default function App() {
     }
   }
 
+  const blockAllApps = async () => {
+    try {
+      await DeviceActivityAndroid.blockAllApps(
+        'block-all-session',
+        Date.now() + 60 * 60 * 1000, // 1 hour
+        {
+          title: 'All Apps Blocked',
+          message: 'All apps are blocked for 1 hour.',
+          ctaText: 'Go Back',
+        }
+      )
+      setSessionActive(true)
+      Alert.alert('Success', 'All apps blocked for 1 hour!')
+    } catch (error: any) {
+      Alert.alert('Error', `Failed to block all apps: ${error.message}`)
+      console.error(error)
+    }
+  }
+
+  const unblockAllApps = async () => {
+    try {
+      await DeviceActivityAndroid.unblockAllApps()
+      setSessionActive(false)
+      Alert.alert('Success', 'All apps unblocked!')
+    } catch (error: any) {
+      Alert.alert('Error', `Failed to unblock apps: ${error.message}`)
+      console.error(error)
+    }
+  }
+
+  const showBlockStatus = async () => {
+    try {
+      const status = await DeviceActivityAndroid.getBlockStatus()
+      console.log('📊 Block Status:', status)
+      Alert.alert(
+        'Block Status',
+        `Blocking: ${status.isBlocking ? 'Yes' : 'No'}\n` +
+          `Active Sessions: ${status.activeSessionCount}\n` +
+          `Session IDs: ${status.activeSessions.join(', ') || 'None'}\n` +
+          `Service Running: ${status.isServiceRunning ? 'Yes' : 'No'}\n` +
+          `Current App: ${status.currentForegroundApp || 'Unknown'}`
+      )
+    } catch (error: any) {
+      Alert.alert('Error', `Failed to get status: ${error.message}`)
+      console.error(error)
+    }
+  }
+
+  const temporaryUnblock = async () => {
+    try {
+      const duration = parseInt(tempUnblockSeconds, 10)
+      if (isNaN(duration) || duration <= 0) {
+        Alert.alert('Error', 'Please enter a valid number of seconds')
+        return
+      }
+
+      await DeviceActivityAndroid.temporaryUnblock(duration)
+      setTempUnblockTimeRemaining(duration)
+      Alert.alert(
+        'Success',
+        `Apps unblocked for ${duration} seconds. Blocking will resume automatically.`
+      )
+
+      // Listen for when blocking resumes
+      const subscription = DeviceActivityAndroid.addListener(event => {
+        if (event.type === 'temporary_unblock_ended') {
+          Alert.alert('Notice', 'Blocking has resumed!')
+          setTempUnblockTimeRemaining(null)
+          subscription.remove()
+        }
+      })
+    } catch (error: any) {
+      Alert.alert('Error', `Failed to temporarily unblock: ${error.message}`)
+      console.error(error)
+    }
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar style='auto' />
@@ -187,6 +297,73 @@ export default function App() {
             <TouchableOpacity style={styles.button} onPress={() => requestPermission('usage')}>
               <Text style={styles.buttonText}>Grant</Text>
             </TouchableOpacity>
+          </View>
+
+          <View style={styles.permissionRow}>
+            <Text style={styles.permissionText}>
+              Exact Alarms: {permissions.scheduleExactAlarmEnabled ? '✓' : '✗'}
+            </Text>
+            <TouchableOpacity style={styles.button} onPress={() => requestPermission('alarm')}>
+              <Text style={styles.buttonText}>Grant</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Quick Actions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+
+          <View style={[styles.row, styles.rowWithSpacing]}>
+            <TouchableOpacity
+              style={[styles.button, styles.buttonOrange]}
+              onPress={blockAllApps}
+            >
+              <Text style={styles.buttonText}>Block All Apps</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.button, styles.buttonBlue]}
+              onPress={unblockAllApps}
+            >
+              <Text style={styles.buttonText}>Unblock All</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.rowWithSpacing}>
+            <TouchableOpacity
+              style={[styles.button, styles.buttonPurple, styles.buttonFullWidth]}
+              onPress={showBlockStatus}
+            >
+              <Text style={styles.buttonText}>Block Status</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Temporary Unblock Section */}
+          <View style={styles.tempUnblockContainer}>
+            <Text style={styles.tempUnblockLabel}>Temporary Unblock (seconds):</Text>
+            <View style={styles.tempUnblockRow}>
+              <TextInput
+                style={styles.tempUnblockInput}
+                value={tempUnblockSeconds}
+                onChangeText={setTempUnblockSeconds}
+                keyboardType='numeric'
+                placeholder='60'
+              />
+              <TouchableOpacity
+                style={[styles.button, styles.buttonTeal, styles.tempUnblockButton]}
+                onPress={temporaryUnblock}
+              >
+                <Text style={styles.buttonText}>Start</Text>
+              </TouchableOpacity>
+            </View>
+            {tempUnblockTimeRemaining !== null && (
+              <View style={styles.countdownContainer}>
+                <Text style={styles.countdownText}>
+                  ⏱️ Time remaining: {Math.floor(tempUnblockTimeRemaining / 60)}:
+                  {(tempUnblockTimeRemaining % 60).toString().padStart(2, '0')}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -374,6 +551,32 @@ const styles = StyleSheet.create({
   buttonGray: {
     backgroundColor: '#757575',
   },
+  buttonOrange: {
+    backgroundColor: '#FF9800',
+    flex: 1,
+    marginRight: 5,
+  },
+  buttonBlue: {
+    backgroundColor: '#2196F3',
+    flex: 1,
+    marginLeft: 5,
+  },
+  buttonPurple: {
+    backgroundColor: '#9C27B0',
+    flex: 1,
+    marginRight: 5,
+  },
+  buttonFullWidth: {
+    flex: 0,
+    width: '100%',
+    marginRight: 0,
+    marginLeft: 0,
+  },
+  buttonTeal: {
+    backgroundColor: '#009688',
+    flex: 1,
+    marginLeft: 5,
+  },
   buttonDisabled: {
     backgroundColor: '#ccc',
   },
@@ -389,6 +592,55 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: 10,
+  },
+  rowWithSpacing: {
+    marginBottom: 10,
+  },
+  tempUnblockContainer: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  tempUnblockLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  tempUnblockRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  tempUnblockInput: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  tempUnblockButton: {
+    flex: 0,
+    paddingHorizontal: 24,
+    marginLeft: 0,
+  },
+  countdownContainer: {
+    marginTop: 10,
+    backgroundColor: '#E8F5E9',
+    padding: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+  },
+  countdownText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2E7D32',
+    textAlign: 'center',
   },
   activeText: {
     marginTop: 12,

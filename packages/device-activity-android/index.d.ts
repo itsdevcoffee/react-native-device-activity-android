@@ -19,6 +19,7 @@ export type PermissionsStatus = {
   accessibilityEnabled: boolean
   overlayEnabled: boolean
   usageAccessEnabled: boolean
+  scheduleExactAlarmEnabled: boolean
 }
 
 export type ForegroundApp = {
@@ -31,12 +32,23 @@ export type BlockEvent =
   | { type: 'block_dismissed'; sessionId: string; ts: number }
   | { type: 'app_attempt'; packageName: string; sessionId: string; ts: number }
   | { type: 'service_state'; running: boolean; ts: number }
+  | { type: 'temporary_unblock_ended'; ts: number }
+
+export type BlockStatus = {
+  isBlocking: boolean
+  activeSessionCount: number
+  activeSessions: string[]
+  isServiceRunning: boolean
+  currentForegroundApp: string | null
+  timestamp: number
+}
 
 declare const DeviceActivityAndroid: {
   getPermissionsStatus(): Promise<PermissionsStatus>
   requestAccessibilityPermission(): Promise<void>
   requestOverlayPermission(): Promise<void>
   requestUsageAccessPermission(): Promise<void>
+  requestScheduleExactAlarmPermission(): Promise<void>
   startSession(config: SessionConfig, style?: ShieldStyle): Promise<void>
   updateSession(
     config: Partial<SessionConfig> & { id: string }
@@ -54,6 +66,14 @@ declare const DeviceActivityAndroid: {
       icon?: string
     }>
   >
+  blockAllApps(
+    sessionId?: string,
+    endsAt?: number,
+    style?: ShieldStyle
+  ): Promise<void>
+  unblockAllApps(): Promise<void>
+  getBlockStatus(): Promise<BlockStatus>
+  temporaryUnblock(durationSeconds: number): Promise<void>
   addListener(cb: (e: BlockEvent) => void): { remove(): void }
 }
 

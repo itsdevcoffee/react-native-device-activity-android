@@ -6,6 +6,7 @@ import type {
   PermissionsStatus,
   ForegroundApp,
   BlockEvent,
+  BlockStatus,
 } from '../index'
 
 const MODULE_NAME = 'RNDeviceActivityAndroid'
@@ -74,6 +75,16 @@ const DeviceActivityAndroid = {
    */
   requestUsageAccessPermission(): Promise<void> {
     return nativeModule.requestUsageAccessPermission()
+  },
+
+  /**
+   * Request Schedule Exact Alarm permission (Android 12+).
+   * Opens system settings for the user to grant exact alarm permission.
+   * This is required for the temporary unblock feature to work reliably.
+   * On Android 12, this is automatically granted. On Android 13+, it can be revoked by the user.
+   */
+  requestScheduleExactAlarmPermission(): Promise<void> {
+    return nativeModule.requestScheduleExactAlarmPermission()
   },
 
   /**
@@ -159,6 +170,97 @@ const DeviceActivityAndroid = {
   },
 
   /**
+   * Block all installed user apps.
+   * Creates a blocking session with all installed apps in the blocked list.
+   *
+   * @param sessionId - Optional session ID (defaults to "block-all")
+   * @param endsAt - Optional end time in milliseconds
+   * @param style - Optional styling for the block overlay screen
+   * @returns Promise that resolves when all apps are blocked
+   *
+   * @example
+   * ```ts
+   * // Block all apps for 1 hour
+   * await DeviceActivityAndroid.blockAllApps(
+   *   'deep-focus',
+   *   Date.now() + 60 * 60 * 1000,
+   *   { title: 'Deep Focus Mode', message: 'Stay focused!' }
+   * )
+   * ```
+   */
+  blockAllApps(
+    sessionId?: string,
+    endsAt?: number,
+    style?: ShieldStyle
+  ): Promise<void> {
+    return nativeModule.blockAllApps(sessionId || null, endsAt || null, style || null)
+  },
+
+  /**
+   * Unblock all apps by stopping all active blocking sessions.
+   * Alias for stopAllSessions for API clarity.
+   *
+   * @returns Promise that resolves when all apps are unblocked
+   *
+   * @example
+   * ```ts
+   * await DeviceActivityAndroid.unblockAllApps()
+   * ```
+   */
+  unblockAllApps(): Promise<void> {
+    return nativeModule.unblockAllApps()
+  },
+
+  /**
+   * Get current blocking status including active sessions.
+   *
+   * @returns Promise resolving to current block status
+   *
+   * @example
+   * ```ts
+   * const status = await DeviceActivityAndroid.getBlockStatus()
+   * console.log(`Blocking: ${status.isBlocking}`)
+   * console.log(`Active sessions: ${status.activeSessionCount}`)
+   * console.log(`Session IDs: ${status.activeSessions.join(', ')}`)
+   * ```
+   */
+  getBlockStatus(): Promise<{
+    isBlocking: boolean
+    activeSessionCount: number
+    activeSessions: string[]
+    isServiceRunning: boolean
+    currentForegroundApp: string | null
+    timestamp: number
+  }> {
+    return nativeModule.getBlockStatus()
+  },
+
+  /**
+   * Temporarily unblock all apps for a specified duration.
+   * After the duration expires, all previous sessions automatically resume.
+   * Emits a 'temporary_unblock_ended' event when blocking resumes.
+   *
+   * @param durationSeconds - Duration in seconds to pause blocking
+   * @returns Promise that resolves when temporary unblock starts
+   *
+   * @example
+   * ```ts
+   * // Unblock for 60 seconds
+   * await DeviceActivityAndroid.temporaryUnblock(60)
+   *
+   * // Listen for when blocking resumes
+   * DeviceActivityAndroid.addListener((event) => {
+   *   if (event.type === 'temporary_unblock_ended') {
+   *     console.log('Blocking resumed')
+   *   }
+   * })
+   * ```
+   */
+  temporaryUnblock(durationSeconds: number): Promise<void> {
+    return nativeModule.temporaryUnblock(durationSeconds)
+  },
+
+  /**
    * DEBUG: Get comprehensive metadata for all installed apps.
    * Returns extensive metadata including version, install dates, categories, paths, etc.
    * Use this to explore available data and determine what to expose in the public API.
@@ -228,6 +330,7 @@ export type {
   PermissionsStatus,
   ForegroundApp,
   BlockEvent,
+  BlockStatus,
 }
 
 // Re-export app category utilities

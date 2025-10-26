@@ -78,6 +78,21 @@ const withDeviceActivityAndroid = (config) => {
       })
     }
 
+    // Add SCHEDULE_EXACT_ALARM permission for Android 12+ (API 31+)
+    // Required for temporary unblock feature to work even when app is backgrounded/killed
+    if (
+      !permissions.find(
+        (p) =>
+          p.$?.['android:name'] === 'android.permission.SCHEDULE_EXACT_ALARM'
+      )
+    ) {
+      permissions.push({
+        $: {
+          'android:name': 'android.permission.SCHEDULE_EXACT_ALARM',
+        },
+      })
+    }
+
     // Ensure tools namespace is declared
     if (!androidManifest.manifest.$) {
       androidManifest.manifest.$ = {}
@@ -170,6 +185,41 @@ const withDeviceActivityAndroid = (config) => {
                 'android:name': 'android.accessibilityservice',
                 'android:resource': '@xml/accessibility_service_config',
               },
+            },
+          ],
+        })
+      }
+
+      // Add BroadcastReceiver for temporary unblock alarm
+      if (!app.receiver) {
+        app.receiver = []
+      }
+
+      // Check if receiver already exists
+      const receiverExists = app.receiver.find(
+        (r) =>
+          r.$?.['android:name'] ===
+          'com.breakrr.deviceactivity.TemporaryUnblockReceiver'
+      )
+
+      if (!receiverExists) {
+        app.receiver.push({
+          $: {
+            'android:name':
+              'com.breakrr.deviceactivity.TemporaryUnblockReceiver',
+            'android:enabled': 'true',
+            'android:exported': 'false',
+          },
+          'intent-filter': [
+            {
+              action: [
+                {
+                  $: {
+                    'android:name':
+                      'com.breakrr.deviceactivity.RESTORE_SESSIONS',
+                  },
+                },
+              ],
             },
           ],
         })

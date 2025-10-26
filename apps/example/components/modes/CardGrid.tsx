@@ -78,8 +78,7 @@ const GridTile = React.memo(
       scale.value = withSpring(1.0, { damping: 20, stiffness: 300 })
     }
 
-    const tileHeight = density === 'compact' ? 56 : 64
-    const iconSize = density === 'compact' ? 28 : 32
+    const iconSize = density === 'compact' ? 60 : 68
 
     return (
       <AnimatedTile
@@ -94,66 +93,36 @@ const GridTile = React.memo(
         accessibilityState={{ checked: isSelected, disabled: isDisabled }}
         accessibilityLabel={app.name}
       >
-        <View
-          style={[
-            styles.tile,
-            {
-              height: tileHeight,
-              backgroundColor: theme.surface,
-              opacity: isDisabled ? 0.4 : 1,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.05,
-              shadowRadius: theme.shadow.low,
-              borderWidth: StyleSheet.hairlineWidth,
-              borderColor: theme.border,
-            },
-          ]}
-        >
-          {/* Checkbox on left - small indicator */}
-          <View style={styles.checkboxContainer}>
+        <View style={styles.tileContent}>
+          <View
+            style={[
+              styles.iconContainer,
+              {
+                opacity: isDisabled ? 0.4 : 1,
+              },
+            ]}
+          >
+            <Icon
+              uri={app.iconUri}
+              name={app.name}
+              size={iconSize}
+              borderRadius={iconSize * 0.225}
+              backgroundColor={theme.surfaceElevated}
+              textColor={theme.textMuted}
+            />
+
+            {/* Checkbox badge overlay - top right corner */}
             {isSelected && (
               <View
                 style={[
-                  styles.checkboxIndicator,
+                  styles.checkboxBadge,
                   { backgroundColor: theme.primary },
                 ]}
               >
                 <Text style={[styles.checkmark, { color: theme.background }]}>✓</Text>
               </View>
             )}
-            {!isSelected && (
-              <View
-                style={[
-                  styles.uncheckedIndicator,
-                  {
-                    borderColor: theme.border,
-                  },
-                ]}
-              />
-            )}
           </View>
-
-          <Icon
-            uri={app.iconUri}
-            name={app.name}
-            size={iconSize}
-            borderRadius={8}
-            backgroundColor={theme.surfaceElevated}
-            textColor={theme.textMuted}
-          />
-          <Text
-            style={[
-              styles.tileText,
-              {
-                color: theme.text,
-                fontSize: density === 'compact' ? 13.5 : 14,
-              },
-            ]}
-            numberOfLines={1}
-          >
-            {app.name}
-          </Text>
         </View>
       </AnimatedTile>
     )
@@ -192,9 +161,8 @@ export function CardGrid({
 
   const columns = useMemo(() => {
     if (columnsProp) return columnsProp
-    if (width >= 768) return 5
-    if (width >= 480) return 4
-    return 3
+    // Icon grid: 4 per row on all sizes
+    return 4
   }, [width, columnsProp])
 
   const sections = useMemo<Section[]>(() => {
@@ -300,7 +268,7 @@ export function CardGrid({
 
   const renderRow = useCallback(
     ({ item, index }: { item: AppItem[]; index: number }) => (
-      <View style={[styles.row, { gap: 8 }]}>
+      <View style={styles.row}>
         {item.map((app, tileIndex) => {
           const isSelected = selectedIds.includes(app.id)
           const isDisabled = disabledIds.includes(app.id)
@@ -445,54 +413,49 @@ export function CardGrid({
 
 const styles = StyleSheet.create({
   container: {
-    padding: 12,
-    paddingBottom: 16,
+    padding: 16,
+    paddingBottom: 24,
   },
   row: {
     flexDirection: 'row',
-    marginBottom: 9,
+    marginBottom: 16,
+    justifyContent: 'flex-start',
   },
   tileWrapper: {
     flex: 1,
+    maxWidth: '25%',
+    aspectRatio: 1,
+    paddingHorizontal: 6,
   },
-  tile: {
-    flexDirection: 'row',
+  tileContent: {
+    flex: 1,
     alignItems: 'center',
-    paddingHorizontal: 9,
-    borderRadius: 11,
+    justifyContent: 'center',
+  },
+  iconContainer: {
     position: 'relative',
-  },
-  checkboxContainer: {
-    width: 19,
-    height: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 7,
-  },
-  checkboxIndicator: {
-    width: 17,
-    height: 17,
-    borderRadius: 5,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  uncheckedIndicator: {
-    width: 17,
-    height: 17,
-    borderRadius: 5,
-    borderWidth: 1.5,
+  checkboxBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
   },
   checkmark: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     marginTop: -0.5,
-  },
-  tileText: {
-    flex: 1,
-    marginLeft: 7,
-    fontWeight: '600',
-    lineHeight: 17,
-    letterSpacing: -0.1,
   },
   rail: {
     flexGrow: 0,

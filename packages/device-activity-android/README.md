@@ -120,6 +120,57 @@ type SessionConfig = {
 }
 ```
 
+### Quick Actions
+
+The library provides convenient methods for common blocking scenarios:
+
+#### Block All Apps
+
+```typescript
+// Block all installed apps for 1 hour
+await DeviceActivityAndroid.blockAllApps(
+  'deep-focus-session',
+  Date.now() + 60 * 60 * 1000,
+  {
+    title: 'Deep Focus Mode',
+    message: 'All apps are blocked for 1 hour.',
+    ctaText: 'Go Back',
+  }
+)
+```
+
+#### Check Blocking Status
+
+```typescript
+const status = await DeviceActivityAndroid.getBlockStatus()
+console.log(`Blocking: ${status.isBlocking}`)
+console.log(`Active sessions: ${status.activeSessionCount}`)
+console.log(`Session IDs: ${status.activeSessions.join(', ')}`)
+console.log(`Current app: ${status.currentForegroundApp}`)
+```
+
+#### Temporary Unblock
+
+```typescript
+// Pause blocking for 60 seconds, then automatically resume
+await DeviceActivityAndroid.temporaryUnblock(60)
+
+// Listen for when blocking resumes
+const subscription = DeviceActivityAndroid.addListener(event => {
+  if (event.type === 'temporary_unblock_ended') {
+    console.log('Blocking has resumed!')
+    subscription.remove()
+  }
+})
+```
+
+#### Unblock All Apps
+
+```typescript
+// Stop all active blocking sessions
+await DeviceActivityAndroid.unblockAllApps()
+```
+
 ## How It Works
 
 The library uses a combination of Android system APIs to detect and block apps:
@@ -152,6 +203,9 @@ const subscription = DeviceActivityAndroid.addListener(event => {
       break
     case 'service_state':
       console.log('Service running:', event.running)
+      break
+    case 'temporary_unblock_ended':
+      console.log('Temporary unblock period has ended, blocking resumed')
       break
   }
 })
@@ -192,6 +246,10 @@ apps.forEach(app => {
 - `updateSession(config: Partial<SessionConfig> & { id: string }): Promise<void>` - Update an existing session configuration
 - `stopSession(sessionId: string): Promise<void>` - Stop a specific blocking session by ID
 - `stopAllSessions(): Promise<void>` - Stop all active blocking sessions
+- `blockAllApps(sessionId?: string, endsAt?: number, style?: ShieldStyle): Promise<void>` - Block all installed user apps in one session
+- `unblockAllApps(): Promise<void>` - Unblock all apps by stopping all sessions (alias for stopAllSessions)
+- `getBlockStatus(): Promise<BlockStatus>` - Get current blocking status including active sessions
+- `temporaryUnblock(durationSeconds: number): Promise<void>` - Temporarily pause all blocking for N seconds, then auto-resume
 
 ##### App Information
 - `getCurrentForegroundApp(): Promise<ForegroundApp>` - Get the current foreground app package name (best effort)

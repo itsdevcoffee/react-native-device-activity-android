@@ -1,6 +1,8 @@
 package com.breakrr.deviceactivity
 
+import android.app.AlarmManager
 import android.app.AppOpsManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -58,7 +60,8 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
       }
     }
 
-    private var staticReactContext: ReactApplicationContext? = null
+    // Internal so it can be accessed by TemporaryUnblockReceiver
+    internal var staticReactContext: ReactApplicationContext? = null
   }
 
   init {
@@ -77,6 +80,7 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
         putBoolean("accessibilityEnabled", isAccessibilityServiceEnabled())
         putBoolean("overlayEnabled", canDrawOverlays())
         putBoolean("usageAccessEnabled", hasUsageStatsPermission())
+        putBoolean("scheduleExactAlarmEnabled", canScheduleExactAlarms())
       }
       promise.resolve(status)
     } catch (e: Exception) {
@@ -137,6 +141,27 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
       promise.resolve(null)
     } catch (e: Exception) {
       promise.reject("ERROR", "Failed to open usage access settings", e)
+    }
+  }
+
+  /**
+   * Request schedule exact alarm permission (Android 13+).
+   * Opens system settings for user to grant permission.
+   * On Android 12, this permission is automatically granted.
+   */
+  @ReactMethod
+  fun requestScheduleExactAlarmPermission(promise: Promise) {
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+          flags = Intent.FLAG_ACTIVITY_NEW_TASK
+          data = Uri.parse("package:${reactContext.packageName}")
+        }
+        reactContext.startActivity(intent)
+      }
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Failed to open schedule exact alarm settings", e)
     }
   }
 
@@ -460,6 +485,188 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
   }
 
   /**
+   * Block all installed user apps.
+   * Creates a session with all installed apps in the blocked list.
+   *
+   * @param sessionId Optional session ID (defaults to "block-all")
+   * @param endsAt Optional end time in milliseconds
+   * @param style Optional shield style configuration
+   */
+  @ReactMethod
+  fun blockAllApps(sessionId: String?, endsAt: Double?, styleMap: ReadableMap?, promise: Promise) {
+    try {
+      // Get all installed apps
+      val packageManager = reactContext.packageManager
+      val installedApps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+
+      val blockedPackages = mutableSetOf<String>()
+
+      for (appInfo in installedApps) {
+        val packageName = appInfo.packageName
+
+        // Skip current app
+        if (packageName == reactContext.packageName) continue
+
+        // Skip system utilities
+        val systemUtilities = setOf(
+          "com.android.settings",
+          "com.android.documentsui",
+          "com.android.packageinstaller",
+          "com.google.android.packageinstaller"
+        )
+        if (packageName in systemUtilities) continue
+
+        // Skip Google core services
+        if (packageName.startsWith("com.google.android.gms") ||
+            packageName.startsWith("com.google.android.gsf")) continue
+
+        // Must have launcher activity
+        val launchIntent = try {
+          packageManager.getLaunchIntentForPackage(packageName)
+        } catch (e: Exception) {
+          null
+        }
+        if (launchIntent == null) continue
+
+        // User app or updated system app
+        val isUserApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0
+        val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+
+        if (isUserApp || isUpdatedSystemApp) {
+          blockedPackages.add(packageName)
+        }
+      }
+
+      // Create session
+      val id = sessionId ?: "block-all"
+      val endsAtLong = endsAt?.toLong()
+      val session = SessionState(
+        id = id,
+        blocked = blockedPackages,
+        allow = emptySet(),
+        startsAt = null,
+        endsAt = endsAtLong
+      )
+
+      val style = if (styleMap != null) parseShieldStyle(styleMap) else null
+      BlockerAccessibilityService.addSession(session, style)
+
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Failed to block all apps", e)
+    }
+  }
+
+  /**
+   * Unblock all apps by stopping all sessions.
+   * Alias for stopAllSessions for API clarity.
+   */
+  @ReactMethod
+  fun unblockAllApps(promise: Promise) {
+    try {
+      BlockerAccessibilityService.removeAllSessions()
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Failed to unblock all apps", e)
+    }
+  }
+
+  /**
+   * Get current blocking status including active sessions.
+   */
+  @ReactMethod
+  fun getBlockStatus(promise: Promise) {
+    try {
+      val status = Arguments.createMap().apply {
+        putBoolean("isBlocking", BlockerAccessibilityService.hasActiveSessions())
+        putInt("activeSessionCount", BlockerAccessibilityService.getActiveSessionCount())
+        putArray("activeSessions", BlockerAccessibilityService.getActiveSessionIds())
+        putBoolean("isServiceRunning", BlockerAccessibilityService.instance != null)
+        putString("currentForegroundApp", BlockerAccessibilityService.currentForegroundPackage)
+        putDouble("timestamp", System.currentTimeMillis().toDouble())
+      }
+      promise.resolve(status)
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Failed to get block status", e)
+    }
+  }
+
+  /**
+   * Temporarily unblock all apps for a specified duration.
+   * After the duration expires, blocking automatically resumes.
+   * Uses AlarmManager to work even if app is backgrounded or killed.
+   *
+   * @param durationSeconds Duration in seconds to pause blocking
+   */
+  @ReactMethod
+  fun temporaryUnblock(durationSeconds: Int, promise: Promise) {
+    try {
+      if (durationSeconds <= 0) {
+        promise.reject("ERROR", "Duration must be greater than 0")
+        return
+      }
+
+      // Store current sessions and styles
+      val savedSessions = BlockerAccessibilityService.getAllSessions()
+      val savedStyles = BlockerAccessibilityService.getAllStyles()
+
+      if (savedSessions.isEmpty()) {
+        promise.reject("ERROR", "No active sessions to unblock")
+        return
+      }
+
+      // Save sessions to SharedPreferences (so they persist if app is killed)
+      SessionStorageHelper.saveSessions(reactContext, savedSessions, savedStyles)
+
+      // Remove all sessions to unblock apps
+      BlockerAccessibilityService.removeAllSessions()
+
+      // Schedule alarm to restore sessions after duration
+      val alarmManager = reactContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+      val intent = Intent(reactContext, TemporaryUnblockReceiver::class.java).apply {
+        action = TemporaryUnblockReceiver.ACTION_RESTORE_SESSIONS
+      }
+
+      val pendingIntent = PendingIntent.getBroadcast(
+        reactContext,
+        0,
+        intent,
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+          PendingIntent.FLAG_UPDATE_CURRENT
+        }
+      )
+
+      val triggerTime = System.currentTimeMillis() + (durationSeconds * 1000L)
+
+      // Use setExactAndAllowWhileIdle for precise timing even in Doze mode
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        alarmManager.setExactAndAllowWhileIdle(
+          AlarmManager.RTC_WAKEUP,
+          triggerTime,
+          pendingIntent
+        )
+      } else {
+        alarmManager.setExact(
+          AlarmManager.RTC_WAKEUP,
+          triggerTime,
+          pendingIntent
+        )
+      }
+
+      android.util.Log.d(
+        "RNDeviceActivity",
+        "Temporary unblock scheduled for $durationSeconds seconds (alarm will fire even if app is killed)"
+      )
+
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Failed to temporarily unblock: ${e.message}", e)
+    }
+  }
+
+  /**
    * Required for NativeEventEmitter.
    * Called when JS adds a listener.
    */
@@ -515,6 +722,22 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
       )
     }
     return mode == AppOpsManager.MODE_ALLOWED
+  }
+
+  private fun canScheduleExactAlarms(): Boolean {
+    // On Android 12 (API 31), permission is automatically granted
+    // On Android 13+ (API 33+), user can revoke it
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      val alarmManager = reactContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        alarmManager.canScheduleExactAlarms()
+      } else {
+        true
+      }
+    } else {
+      // Not needed on Android < 12
+      true
+    }
   }
 
   private fun parseSessionConfig(map: ReadableMap): SessionState {
