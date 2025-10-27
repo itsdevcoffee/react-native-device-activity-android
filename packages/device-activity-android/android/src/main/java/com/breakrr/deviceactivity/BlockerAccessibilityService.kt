@@ -759,40 +759,19 @@ class BlockerAccessibilityService : AccessibilityService() {
         titleTextView = it
       }
 
-      // Add subtitle/message - SIMPLIFIED WITHOUT TEMPLATE VARIABLES FOR TESTING
+      // Add subtitle/message with template variable support
       val subtitleView = TextView(this).apply {
-        // HARDCODED TEST - bypass all template logic
-        text = "Open app to unlock this is a test"
-        textSize = 18f
-        setTextColor(0xFFC8C8C8.toInt())  // Light gray
+        val resolvedSubtitle = resolveTemplateVariables(
+          style.subtitle ?: "Open app to unlock",
+          blockedPackage,
+          session?.endsAt
+        )
+        text = resolvedSubtitle
+        textSize = 16f
+        val defaultSubtitleColor = if (style.backgroundBlurStyle == "light") 0xFF6D6D6D.toInt() else 0xFFCCCCCC.toInt()
+        setTextColor(style.subtitleColor?.toAndroidColor() ?: defaultSubtitleColor)
         gravity = android.view.Gravity.CENTER
         setPadding(16, 8, 16, 24)
-
-        // Add measurement listener to diagnose layout issues
-        viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
-          override fun onGlobalLayout() {
-            android.util.Log.d("BlockerService", "===== SUBTITLE MEASUREMENT DEBUG =====")
-            android.util.Log.d("BlockerService", "Text: '${text}'")
-            android.util.Log.d("BlockerService", "Measured Width: ${measuredWidth}px (${measuredWidth / resources.displayMetrics.density}dp)")
-            android.util.Log.d("BlockerService", "Measured Height: ${measuredHeight}px (${measuredHeight / resources.displayMetrics.density}dp)")
-            android.util.Log.d("BlockerService", "Actual Width: ${width}px (${width / resources.displayMetrics.density}dp)")
-            android.util.Log.d("BlockerService", "Actual Height: ${height}px (${height / resources.displayMetrics.density}dp)")
-            android.util.Log.d("BlockerService", "Layout Width: ${layoutParams.width}")
-            android.util.Log.d("BlockerService", "Layout Height: ${layoutParams.height}")
-            android.util.Log.d("BlockerService", "Parent Width: ${(parent as? android.view.View)?.width}px")
-            android.util.Log.d("BlockerService", "Parent Measured Width: ${(parent as? android.view.View)?.measuredWidth}px")
-            android.util.Log.d("BlockerService", "Screen Width: ${resources.displayMetrics.widthPixels}px (${resources.displayMetrics.widthPixels / resources.displayMetrics.density}dp)")
-            android.util.Log.d("BlockerService", "Text Paint Width: ${paint.measureText(text.toString())}px")
-            android.util.Log.d("BlockerService", "======================================")
-
-            // Remove listener after first measurement
-            viewTreeObserver.removeOnGlobalLayoutListener(this)
-          }
-        })
-
-        android.util.Log.d("BlockerService", "===== SUBTITLE SIMPLE TEST =====")
-        android.util.Log.d("BlockerService", "Hardcoded text: '${this.text}'")
-        android.util.Log.d("BlockerService", "==========================")
       }.also {
         subtitleTextView = it
       }
