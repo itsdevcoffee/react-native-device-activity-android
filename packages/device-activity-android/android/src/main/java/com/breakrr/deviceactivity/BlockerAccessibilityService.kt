@@ -50,6 +50,10 @@ class BlockerAccessibilityService : AccessibilityService() {
   private var currentBlockedPackage: String? = null
   private var currentStyle: ShieldStyle? = null
 
+  // Dynamic power points counter
+  private var powerPoints: Int = 24000
+  private val random = kotlin.random.Random
+
   companion object {
     var instance: BlockerAccessibilityService? = null
     var currentForegroundPackage: String? = null
@@ -527,9 +531,8 @@ class BlockerAccessibilityService : AccessibilityService() {
       resolved = resolved.replace("{{countdown}}", "N/A")
     }
 
-    // {{powerPoints}} - Example power points (mockup value)
-    // In a real implementation, this would come from your app's state
-    resolved = resolved.replace("{{powerPoints}}", "150")
+    // {{powerPoints}} - Dynamic power points that increase over time
+    resolved = resolved.replace("{{powerPoints}}", powerPoints.toString())
 
     // {{timestamp}} - Current ISO timestamp
     val timestamp = java.text.SimpleDateFormat(
@@ -558,11 +561,28 @@ class BlockerAccessibilityService : AccessibilityService() {
         android.util.Log.d("BlockerService", "Countdown tick: remaining=$remaining ms, formatted=${formatRemainingTime(remaining)}")
 
         if (remaining > 0) {
+          // Increment power points by random amount (23-27)
+          powerPoints += random.nextInt(23, 28) // 23 to 27 inclusive
+
           val formattedTime = formatRemainingTime(remaining)
           val displayText = "Unblocks in $formattedTime"
-          android.util.Log.d("BlockerService", "Setting countdown text: '$displayText', textView=${countdownTextView?.text}")
+          android.util.Log.d("BlockerService", "Setting countdown text: '$displayText', powerPoints=$powerPoints")
           countdownTextView?.text = displayText
-          android.util.Log.d("BlockerService", "After set, textView.text='${countdownTextView?.text}', width=${countdownTextView?.width}, height=${countdownTextView?.height}, visibility=${countdownTextView?.visibility}")
+
+          // Update all TextViews that may contain template variables
+          currentBlockedPackage?.let { pkg ->
+            currentStyle?.let { style ->
+              // Update title if it contains template variables
+              if (style.title?.contains("{{") == true) {
+                titleTextView?.text = resolveTemplateVariables(style.title, pkg, sessionEndTime)
+              }
+
+              // Update subtitle if it contains template variables
+              if (style.subtitle?.contains("{{") == true) {
+                subtitleTextView?.text = resolveTemplateVariables(style.subtitle ?: "", pkg, sessionEndTime)
+              }
+            }
+          }
 
           // Schedule next update in 1 second
           handler.postDelayed(this, 1000)
@@ -593,6 +613,8 @@ class BlockerAccessibilityService : AccessibilityService() {
     sessionEndTime = null
     currentBlockedPackage = null
     currentStyle = null
+    // Reset power points to starting value
+    powerPoints = 24000
   }
 
   /**
@@ -634,6 +656,9 @@ class BlockerAccessibilityService : AccessibilityService() {
    */
   private fun showOverlay(sessionId: String, blockedPackage: String) {
     if (isOverlayShowing) return
+
+    // Reset power points to starting value for new overlay session
+    powerPoints = 24000
 
     try {
       val layoutParams = WindowManager.LayoutParams().apply {
