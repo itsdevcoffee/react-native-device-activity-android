@@ -1,4 +1,4 @@
-# @breakrr/react-native-device-activity-android
+# @breakr/react-native-device-activity-android
 
 React Native library for Android that provides screen blocking functionality similar to Apple's DeviceActivity APIs. This library uses Android's Accessibility Service, Overlay permissions, and Usage Access to monitor and block apps during focus sessions.
 
@@ -16,10 +16,10 @@ React Native library for Android that provides screen blocking functionality sim
 
 ```bash
 # Using yarn
-yarn add @breakrr/react-native-device-activity-android
+yarn add @breakr/react-native-device-activity-android
 
 # Using npm
-npm install @breakrr/react-native-device-activity-android
+npm install @breakr/react-native-device-activity-android
 ```
 
 ## Requirements
@@ -37,7 +37,7 @@ Add the plugin to your `app.json`:
 ```json
 {
   "expo": {
-    "plugins": ["@breakrr/react-native-device-activity-android"]
+    "plugins": ["@breakr/react-native-device-activity-android"]
   }
 }
 ```
@@ -67,7 +67,7 @@ This library requires three special permissions:
 ### Requesting Permissions
 
 ```typescript
-import DeviceActivityAndroid from '@breakrr/react-native-device-activity-android'
+import DeviceActivityAndroid from '@breakr/react-native-device-activity-android'
 
 // Check current status
 const status = await DeviceActivityAndroid.getPermissionsStatus()
@@ -87,7 +87,7 @@ await DeviceActivityAndroid.requestUsageAccessPermission()
 ### Basic Example
 
 ```typescript
-import DeviceActivityAndroid from '@breakrr/react-native-device-activity-android'
+import DeviceActivityAndroid from '@breakr/react-native-device-activity-android'
 
 // Start a focus session blocking Instagram and Twitter for 5 minutes
 await DeviceActivityAndroid.startSession(
@@ -298,7 +298,7 @@ export async function ensureCustomIconCached(): Promise<string | null> {
 4. **Use the custom icon** in your shield configuration:
 
 ```typescript
-import DeviceActivityAndroid from '@breakrr/react-native-device-activity-android'
+import DeviceActivityAndroid from '@breakr/react-native-device-activity-android'
 import { ensureCustomIconCached } from './utils/iconHelper'
 import { ICON_ASSET_PATH, DEFAULT_ICON_SIZE } from './constants'
 
@@ -329,7 +329,7 @@ await DeviceActivityAndroid.startSession(
 The library uses a versioning system for icon caching:
 
 - **Path format**: Use relative paths with `./` prefix (e.g., `./assets/robot-head.png`)
-- **Cached filename**: `breakrr-icon-v{version}.png` (e.g., `breakrr-icon-v1.png`)
+- **Cached filename**: `breakr-icon-v{version}.png` (e.g., `breakr-icon-v1.png`)
 - **Storage location**: Android internal storage (`/data/data/your.package/files/shield-icons/`)
 - **Cache invalidation**: Increment the version number when you update the icon
 - **Old versions**: Automatically cleaned up when new version is cached
@@ -501,7 +501,7 @@ This package is part of a monorepo. To contribute:
 
 ### Making Changes
 
-- **Native code**: Edit files in `packages/device-activity-android/android/src/main/java/com/breakrr/deviceactivity/`
+- **Native code**: Edit files in `packages/device-activity-android/android/src/main/java/com/breakr/deviceactivity/`
 - **JavaScript bridge**: Edit `packages/device-activity-android/src/index.ts`
 - **Type definitions**: Update `packages/device-activity-android/index.d.ts`
 - **Config plugin**: Modify `packages/device-activity-android/plugin/app.plugin.js`

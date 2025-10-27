@@ -31,7 +31,7 @@
             android:enabled="true"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.breakrr.deviceactivity.RESTORE_SESSIONS" />
+                <action android:name="com.breakr.deviceactivity.RESTORE_SESSIONS" />
             </intent-filter>
         </receiver>
     </application>

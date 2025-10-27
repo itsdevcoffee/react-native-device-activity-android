@@ -31,7 +31,7 @@ const eventEmitter = new NativeEventEmitter(nativeModule)
  *
  * @example
  * ```ts
- * import DeviceActivityAndroid from '@breakrr/react-native-device-activity-android'
+ * import DeviceActivityAndroid from '@breakr/react-native-device-activity-android'
  *
  * // Check permissions
  * const status = await DeviceActivityAndroid.getPermissionsStatus()

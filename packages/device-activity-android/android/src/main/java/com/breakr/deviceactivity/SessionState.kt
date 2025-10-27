@@ -1,4 +1,4 @@
-package com.breakrr.deviceactivity
+package com.breakr.deviceactivity
 
 /**
  * Represents a blocking session with its configuration.

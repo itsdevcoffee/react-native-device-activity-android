@@ -14,7 +14,7 @@ Your native module is now **fully working** in the Expo monorepo!
 ### Files Modified
 
 - ✅ `/react-native.config.js` - **CREATED** - Enables autolinking for workspace packages
-- ✅ `/packages/device-activity-android/android/src/main/java/com/breakrr/deviceactivity/RNDeviceActivityAndroidModule.kt` - Added event emitter methods
+- ✅ `/packages/device-activity-android/android/src/main/java/com/breakr/deviceactivity/RNDeviceActivityAndroidModule.kt` - Added event emitter methods
 - ✅ `/apps/example/package.json` - Removed custom Expo autolinking config
 - ✅ `/index.js` - **RENAMED to index.js.bak** - Removed conflicting entry point
 

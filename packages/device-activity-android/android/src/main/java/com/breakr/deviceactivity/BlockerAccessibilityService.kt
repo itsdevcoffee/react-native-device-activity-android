@@ -1,4 +1,4 @@
-package com.breakrr.deviceactivity
+package com.breakr.deviceactivity
 
 import android.accessibilityservice.AccessibilityService
 import android.app.usage.UsageEvents

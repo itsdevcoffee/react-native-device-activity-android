@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { View, Text, StyleSheet, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import DeviceActivityAndroid from '@breakrr/react-native-device-activity-android'
+import DeviceActivityAndroid from '@breakr/react-native-device-activity-android'
 import { Button, Card, Toast } from '../../components/ui'
 import { colors } from '../../theme/colors'
 import { typography } from '../../theme/typography'

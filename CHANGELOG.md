@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Custom shield icon support**
   - New `ensureIconCached()` method to copy custom icons from React Native assets to internal storage
-  - Versioning system for icon cache invalidation (e.g., `breakrr-icon-v1.png`)
+  - Versioning system for icon cache invalidation (e.g., `breakr-icon-v1.png`)
   - `iconSize` field in `ShieldStyle` to control icon size in dp (density-independent pixels)
   - `primaryImagePath` field in `ShieldStyle` to specify custom icon file path
   - Automatic fallback to default emoji if custom icon fails to load
@@ -119,5 +119,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **0.1.0** - Initial release
 
-[Unreleased]: https://github.com/breakrr/react-native-device-activity-android/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/breakrr/react-native-device-activity-android/releases/tag/v0.1.0
+[Unreleased]: https://github.com/breakr/react-native-device-activity-android/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/breakr/react-native-device-activity-android/releases/tag/v0.1.0

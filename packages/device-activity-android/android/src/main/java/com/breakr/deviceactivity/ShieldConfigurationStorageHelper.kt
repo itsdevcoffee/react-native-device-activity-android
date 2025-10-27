@@ -1,4 +1,4 @@
-package com.breakrr.deviceactivity
+package com.breakr.deviceactivity
 
 import android.content.Context
 import org.json.JSONArray

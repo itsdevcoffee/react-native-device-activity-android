@@ -19,7 +19,7 @@ react-native-device-activity-android/
 ├── packages/
 │   └── device-activity-android/        # Core library
 │       ├── android/                     # Native Kotlin code
-│       │   ├── src/main/java/com/breakrr/deviceactivity/
+│       │   ├── src/main/java/com/breakr/deviceactivity/
 │       │   │   ├── SessionState.kt
 │       │   │   ├── BlockerAccessibilityService.kt
 │       │   │   ├── RNDeviceActivityAndroidModule.kt
@@ -249,12 +249,12 @@ yarn typecheck
 
 ```bash
 # In your Expo app
-yarn add @breakrr/react-native-device-activity-android
+yarn add @breakr/react-native-device-activity-android
 
 # Add to app.json
 {
   "expo": {
-    "plugins": ["@breakrr/react-native-device-activity-android"]
+    "plugins": ["@breakr/react-native-device-activity-android"]
   }
 }
 

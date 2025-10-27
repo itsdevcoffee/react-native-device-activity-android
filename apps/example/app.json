@@ -17,7 +17,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.breakrr.deviceactivityexample"
+      "bundleIdentifier": "com.breakr.deviceactivityexample"
     },
     "android": {
       "adaptiveIcon": {
@@ -30,7 +30,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "@breakrr/react-native-device-activity-android"
+      "@breakr/react-native-device-activity-android"
     ]
   }
 }

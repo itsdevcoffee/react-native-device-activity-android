@@ -28,7 +28,7 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>deviceactivity</string>
-          <string>com.breakrr.deviceactivityexample</string>
+          <string>com.breakr.deviceactivityexample</string>
         </array>
       </dict>
       <dict>

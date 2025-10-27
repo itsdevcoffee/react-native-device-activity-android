@@ -14,7 +14,7 @@ const {
  * Usage in app.json:
  * {
  *   "expo": {
- *     "plugins": ["@breakrr/react-native-device-activity-android"]
+ *     "plugins": ["@breakr/react-native-device-activity-android"]
  *   }
  * }
  */
@@ -155,14 +155,14 @@ const withDeviceActivityAndroid = (config) => {
       const serviceExists = app.service.find(
         (s) =>
           s.$?.['android:name'] ===
-          'com.breakrr.deviceactivity.BlockerAccessibilityService'
+          'com.breakr.deviceactivity.BlockerAccessibilityService'
       )
 
       if (!serviceExists) {
         app.service.push({
           $: {
             'android:name':
-              'com.breakrr.deviceactivity.BlockerAccessibilityService',
+              'com.breakr.deviceactivity.BlockerAccessibilityService',
             'android:enabled': 'true',
             'android:exported': 'true',
             'android:permission': 'android.permission.BIND_ACCESSIBILITY_SERVICE',
@@ -199,14 +199,14 @@ const withDeviceActivityAndroid = (config) => {
       const receiverExists = app.receiver.find(
         (r) =>
           r.$?.['android:name'] ===
-          'com.breakrr.deviceactivity.TemporaryUnblockReceiver'
+          'com.breakr.deviceactivity.TemporaryUnblockReceiver'
       )
 
       if (!receiverExists) {
         app.receiver.push({
           $: {
             'android:name':
-              'com.breakrr.deviceactivity.TemporaryUnblockReceiver',
+              'com.breakr.deviceactivity.TemporaryUnblockReceiver',
             'android:enabled': 'true',
             'android:exported': 'false',
           },
@@ -216,7 +216,7 @@ const withDeviceActivityAndroid = (config) => {
                 {
                   $: {
                     'android:name':
-                      'com.breakrr.deviceactivity.RESTORE_SESSIONS',
+                      'com.breakr.deviceactivity.RESTORE_SESSIONS',
                   },
                 },
               ],
@@ -233,7 +233,7 @@ const withDeviceActivityAndroid = (config) => {
 }
 
 const pkg = {
-  name: '@breakrr/react-native-device-activity-android',
+  name: '@breakr/react-native-device-activity-android',
   version: '0.1.0',
 }
 

@@ -24,7 +24,7 @@
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
-    <service android:name="com.breakrr.deviceactivity.BlockerAccessibilityService" android:enabled="true" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+    <service android:name="com.breakr.deviceactivity.BlockerAccessibilityService" android:enabled="true" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
       <intent-filter>
         <action android:name="android.accessibilityservice.AccessibilityService"/>
       </intent-filter>
@@ -43,9 +43,9 @@
         <data android:scheme="exp+device-activity-android-example"/>
       </intent-filter>
     </activity>
-    <receiver android:name="com.breakrr.deviceactivity.TemporaryUnblockReceiver" android:enabled="true" android:exported="false">
+    <receiver android:name="com.breakr.deviceactivity.TemporaryUnblockReceiver" android:enabled="true" android:exported="false">
       <intent-filter>
-        <action android:name="com.breakrr.deviceactivity.RESTORE_SESSIONS"/>
+        <action android:name="com.breakr.deviceactivity.RESTORE_SESSIONS"/>
       </intent-filter>
     </receiver>
   </application>

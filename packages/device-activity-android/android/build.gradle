@@ -3,11 +3,11 @@ plugins {
   id 'expo-module-gradle-plugin'
 }
 
-group = 'com.breakrr.deviceactivity'
+group = 'com.breakr.deviceactivity'
 version = '0.1.0'
 
 android {
-    namespace 'com.breakrr.deviceactivity'
+    namespace 'com.breakr.deviceactivity'
 
     defaultConfig {
         versionCode 1

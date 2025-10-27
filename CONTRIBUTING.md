@@ -27,7 +27,7 @@ This project follows a standard code of conduct. Be respectful, inclusive, and c
    ```
 3. **Add upstream remote**:
    ```bash
-   git remote add upstream https://github.com/breakrr/react-native-device-activity-android.git
+   git remote add upstream https://github.com/breakr/react-native-device-activity-android.git
    ```
 
 ## Development Setup
@@ -231,7 +231,7 @@ fun getInstalledApps(includeIcons: Boolean, promise: Promise) {
 
 ### File Organization
 
-- **Native code**: `packages/device-activity-android/android/src/main/java/com/breakrr/deviceactivity/`
+- **Native code**: `packages/device-activity-android/android/src/main/java/com/breakr/deviceactivity/`
 - **TypeScript bridge**: `packages/device-activity-android/src/`
 - **Type definitions**: `packages/device-activity-android/index.d.ts`
 - **Config plugin**: `packages/device-activity-android/plugin/`
@@ -244,7 +244,7 @@ fun getInstalledApps(includeIcons: Boolean, promise: Promise) {
 ├── packages/
 │   └── device-activity-android/
 │       ├── android/                     # Kotlin native code
-│       │   └── src/main/java/com/breakrr/deviceactivity/
+│       │   └── src/main/java/com/breakr/deviceactivity/
 │       │       ├── BlockerAccessibilityService.kt
 │       │       ├── RNDeviceActivityAndroidModule.kt
 │       │       ├── SessionState.kt
@@ -285,9 +285,9 @@ This library uses Android Accessibility Services, which have strict Google Play 
 
 ## Questions?
 
-- Open a [Discussion](https://github.com/breakrr/react-native-device-activity-android/discussions)
-- Ask in an existing [Issue](https://github.com/breakrr/react-native-device-activity-android/issues)
-- Review [existing PRs](https://github.com/breakrr/react-native-device-activity-android/pulls) for examples
+- Open a [Discussion](https://github.com/breakr/react-native-device-activity-android/discussions)
+- Ask in an existing [Issue](https://github.com/breakr/react-native-device-activity-android/issues)
+- Review [existing PRs](https://github.com/breakr/react-native-device-activity-android/pulls) for examples
 
 ## License
 

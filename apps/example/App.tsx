@@ -15,7 +15,7 @@ import DeviceActivityAndroid, {
   type PermissionsStatus,
   type ShieldStyle,
   getCategoryLabel,
-} from '@breakrr/react-native-device-activity-android'
+} from '@breakr/react-native-device-activity-android'
 import { AppSelector, type AppItem } from './components/AppSelector'
 import { storageHelpers } from './storage'
 import { ensureCustomIconCached } from './utils/iconHelper'

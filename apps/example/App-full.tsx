@@ -14,7 +14,7 @@ import { StatusBar } from 'expo-status-bar'
 import DeviceActivityAndroid, {
   type BlockEvent,
   type PermissionsStatus,
-} from '@breakrr/react-native-device-activity-android'
+} from '@breakr/react-native-device-activity-android'
 
 export default function App() {
   const [permissions, setPermissions] = useState<PermissionsStatus>({

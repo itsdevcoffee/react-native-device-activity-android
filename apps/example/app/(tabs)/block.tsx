@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { View, Text, StyleSheet, ScrollView, Modal, ActivityIndicator, TouchableOpacity } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import DeviceActivityAndroid, { getCategoryLabel } from '@breakrr/react-native-device-activity-android'
+import DeviceActivityAndroid, { getCategoryLabel } from '@breakr/react-native-device-activity-android'
 import { Button, Card, Input, Badge, Toast, EmptyState } from '../../components/ui'
 import { AppSelector, type AppItem } from '../../components/AppSelector'
 import { colors } from '../../theme/colors'

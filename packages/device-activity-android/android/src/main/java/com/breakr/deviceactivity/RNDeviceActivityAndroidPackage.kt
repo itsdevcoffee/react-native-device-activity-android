@@ -1,4 +1,4 @@
-package com.breakrr.deviceactivity
+package com.breakr.deviceactivity
 
 import android.view.View
 import com.facebook.react.ReactPackage

@@ -1,5 +1,5 @@
 {
-  "name": "@breakrr/react-native-device-activity-android",
+  "name": "@breakr/react-native-device-activity-android",
   "version": "0.1.0",
   "description": "React Native Device Activity for Android - Screen blocking functionality using Accessibility Service",
   "main": "lib/index.js",
@@ -25,14 +25,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/breakrr/react-native-device-activity-android.git",
+    "url": "https://github.com/breakr/react-native-device-activity-android.git",
     "directory": "packages/device-activity-android"
   },
   "bugs": {
-    "url": "https://github.com/breakrr/react-native-device-activity-android/issues"
+    "url": "https://github.com/breakr/react-native-device-activity-android/issues"
   },
-  "homepage": "https://github.com/breakrr/react-native-device-activity-android#readme",
-  "author": "Breakrr",
+  "homepage": "https://github.com/breakr/react-native-device-activity-android#readme",
+  "author": "Breakr",
   "license": "MIT",
   "peerDependencies": {
     "expo": ">=54.0.0",

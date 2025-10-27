@@ -1,4 +1,4 @@
-package com.breakrr.deviceactivity
+package com.breakr.deviceactivity
 
 import android.app.AlarmManager
 import android.app.AppOpsManager
@@ -1157,7 +1157,7 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
       }
 
       // Generate versioned filename
-      val filename = "breakrr-icon-v$version.png"
+      val filename = "breakr-icon-v$version.png"
       val targetFile = File(iconsDir, filename)
       android.util.Log.d("RNDeviceActivity", "Target file: ${targetFile.absolutePath}")
 
@@ -1169,7 +1169,7 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
 
       // Delete old versions
       iconsDir.listFiles()?.forEach { file ->
-        if (file.name.startsWith("breakrr-icon-v") && file.name != filename) {
+        if (file.name.startsWith("breakr-icon-v") && file.name != filename) {
           file.delete()
           android.util.Log.d("RNDeviceActivity", "Deleted old icon version: ${file.name}")
         }

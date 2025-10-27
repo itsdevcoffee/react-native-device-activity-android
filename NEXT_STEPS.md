@@ -183,12 +183,12 @@ Follow semantic versioning:
 
 ```bash
 # In your app
-yarn add @breakrr/react-native-device-activity-android
+yarn add @breakr/react-native-device-activity-android
 
 # Add to app.json
 {
   "expo": {
-    "plugins": ["@breakrr/react-native-device-activity-android"]
+    "plugins": ["@breakr/react-native-device-activity-android"]
   }
 }
 

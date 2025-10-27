@@ -1,6 +1,6 @@
 # react-native-device-activity-android
 
-[![CI](https://github.com/breakrr/react-native-device-activity-android/actions/workflows/ci.yml/badge.svg)](https://github.com/breakrr/react-native-device-activity-android/actions/workflows/ci.yml)
+[![CI](https://github.com/breakr/react-native-device-activity-android/actions/workflows/ci.yml/badge.svg)](https://github.com/breakr/react-native-device-activity-android/actions/workflows/ci.yml)
 
 React Native + Expo library that brings iOS-style DeviceActivity functionality to Android. Block distracting apps during focus sessions using Android's Accessibility Service.
 
@@ -27,7 +27,7 @@ This is a Yarn monorepo containing:
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/breakrr/react-native-device-activity-android.git
+git clone https://github.com/breakr/react-native-device-activity-android.git
 cd react-native-device-activity-android
 yarn install
 ```
@@ -44,12 +44,12 @@ expo run:android
 
 ```bash
 # In your Expo app
-yarn add @breakrr/react-native-device-activity-android
+yarn add @breakr/react-native-device-activity-android
 
 # Add to app.json
 {
   "expo": {
-    "plugins": ["@breakrr/react-native-device-activity-android"]
+    "plugins": ["@breakr/react-native-device-activity-android"]
   }
 }
 
@@ -66,7 +66,7 @@ expo run:android
 ## 💡 Basic Usage
 
 ```typescript
-import DeviceActivityAndroid from '@breakrr/react-native-device-activity-android'
+import DeviceActivityAndroid from '@breakr/react-native-device-activity-android'
 
 // Start a 5-minute focus session
 await DeviceActivityAndroid.startSession({
@@ -195,5 +195,5 @@ MIT
 
 ## 📞 Support
 
-- [GitHub Issues](https://github.com/breakrr/react-native-device-activity-android/issues)
-- [Discussions](https://github.com/breakrr/react-native-device-activity-android/discussions)
+- [GitHub Issues](https://github.com/breakr/react-native-device-activity-android/issues)
+- [Discussions](https://github.com/breakr/react-native-device-activity-android/discussions)

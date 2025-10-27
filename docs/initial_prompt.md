@@ -65,12 +65,12 @@ In `src/index.ts`, implement the RN bridge wrapper using `NativeModules` + `Nati
 
 ### Library: Android native code (Kotlin)
 
-Create under `packages/device-activity-android/android/src/main/java/com/breakrr/deviceactivity/`:
+Create under `packages/device-activity-android/android/src/main/java/com/breakr/deviceactivity/`:
 
 1. `SessionState.kt`:
 
 ```kotlin
-package com.breakrr.deviceactivity
+package com.breakr.deviceactivity
 data class SessionState(
   val id: String,
   val blocked: Set<String>,
@@ -132,7 +132,7 @@ Create `packages/device-activity-android/plugin/app.plugin.ts`:
 
 ### Library: packaging
 
-* `package.json` with `"name": "@breakrr/react-native-device-activity-android"`, `"main": "src/index.ts"`, `"types": "index.d.ts"`.
+* `package.json` with `"name": "@breakr/react-native-device-activity-android"`, `"main": "src/index.ts"`, `"types": "index.d.ts"`.
 * Babel/tsconfig for RN.
 * `README.md` with install + usage + Play policy notes, including:
 
@@ -158,12 +158,12 @@ Create `apps/example` with the latest Expo SDK.
 * In `app.json`, include the plugin:
 
   ```json
-  { "expo": { "plugins": ["@breakrr/react-native-device-activity-android/plugin"] } }
+  { "expo": { "plugins": ["@breakr/react-native-device-activity-android/plugin"] } }
   ```
 * Show example usage:
 
   ```ts
-  import DeviceActivityAndroid from '@breakrr/react-native-device-activity-android';
+  import DeviceActivityAndroid from '@breakr/react-native-device-activity-android';
   // ensurePermissions(), startSession({ id: 'focus', blockedPackages: [...] , endsAt: Date.now() + 5*60*1000 })
   ```
 

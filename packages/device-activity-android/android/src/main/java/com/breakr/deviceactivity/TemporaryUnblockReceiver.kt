@@ -1,4 +1,4 @@
-package com.breakrr.deviceactivity
+package com.breakr.deviceactivity
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -17,7 +17,7 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
 class TemporaryUnblockReceiver : BroadcastReceiver() {
 
   companion object {
-    const val ACTION_RESTORE_SESSIONS = "com.breakrr.deviceactivity.RESTORE_SESSIONS"
+    const val ACTION_RESTORE_SESSIONS = "com.breakr.deviceactivity.RESTORE_SESSIONS"
     private const val PREFS_NAME = "DeviceActivityPrefs"
     private const val KEY_SAVED_SESSIONS = "saved_sessions_json"
   }

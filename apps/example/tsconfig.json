@@ -3,7 +3,7 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "@breakrr/react-native-device-activity-android": [
+      "@breakr/react-native-device-activity-android": [
         "../../packages/device-activity-android/src/index.ts"
       ]
     }

@@ -1,5 +1,5 @@
 {
-  "name": "@breakrr/react-native-device-activity-android-plugin",
+  "name": "@breakr/react-native-device-activity-android-plugin",
   "version": "0.1.0",
   "main": "app.plugin.js",
   "private": true
