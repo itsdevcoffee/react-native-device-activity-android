@@ -41,10 +41,14 @@ class BlockerAccessibilityService : AccessibilityService() {
   private val checkInterval = 500L // Check every 500ms for responsiveness
   private var lastForegroundPackage: String? = null
 
-  // Countdown timer for temporary blocks
+  // Countdown timer for temporary blocks with template variables
   private var countdownTextView: TextView? = null
+  private var titleTextView: TextView? = null
+  private var subtitleTextView: TextView? = null
   private var countdownRunnable: Runnable? = null
   private var sessionEndTime: Long? = null
+  private var currentBlockedPackage: String? = null
+  private var currentStyle: ShieldStyle? = null
 
   companion object {
     var instance: BlockerAccessibilityService? = null
@@ -490,25 +494,85 @@ class BlockerAccessibilityService : AccessibilityService() {
   }
 
   /**
+   * Resolve template variables in a string.
+   * Supported variables:
+   * - {{countdown}} - Time remaining until unblock
+   * - {{powerPoints}} - Example power points value
+   * - {{timestamp}} - Current ISO timestamp
+   * - {{appName}} - Name of the blocked app
+   */
+  private fun resolveTemplateVariables(
+    text: String,
+    blockedPackage: String,
+    sessionEndTime: Long?
+  ): String {
+    var resolved = text
+
+    // {{appName}} - Get the app name
+    try {
+      val packageManager = applicationContext.packageManager
+      val appInfo = packageManager.getApplicationInfo(blockedPackage, 0)
+      val appName = packageManager.getApplicationLabel(appInfo).toString()
+      resolved = resolved.replace("{{appName}}", appName)
+    } catch (e: Exception) {
+      resolved = resolved.replace("{{appName}}", blockedPackage)
+    }
+
+    // {{countdown}} - Time remaining
+    if (sessionEndTime != null) {
+      val remaining = sessionEndTime - System.currentTimeMillis()
+      val formattedTime = if (remaining > 0) formatRemainingTime(remaining) else "0s"
+      resolved = resolved.replace("{{countdown}}", formattedTime)
+    } else {
+      resolved = resolved.replace("{{countdown}}", "N/A")
+    }
+
+    // {{powerPoints}} - Example power points (mockup value)
+    // In a real implementation, this would come from your app's state
+    resolved = resolved.replace("{{powerPoints}}", "150")
+
+    // {{timestamp}} - Current ISO timestamp
+    val timestamp = java.text.SimpleDateFormat(
+      "yyyy-MM-dd'T'HH:mm:ss'Z'",
+      java.util.Locale.US
+    ).apply {
+      timeZone = java.util.TimeZone.getTimeZone("UTC")
+    }.format(java.util.Date())
+    resolved = resolved.replace("{{timestamp}}", timestamp)
+
+    return resolved
+  }
+
+  /**
    * Start the countdown timer for temporary blocks.
+   * Updates all text views that contain template variables.
    */
   private fun startCountdown(endTime: Long) {
     sessionEndTime = endTime
+    android.util.Log.d("BlockerService", "startCountdown called with endTime: $endTime, current time: ${System.currentTimeMillis()}")
 
     countdownRunnable = object : Runnable {
       override fun run() {
         val now = System.currentTimeMillis()
         val remaining = endTime - now
+        android.util.Log.d("BlockerService", "Countdown tick: remaining=$remaining ms, formatted=${formatRemainingTime(remaining)}")
 
         if (remaining > 0) {
           val formattedTime = formatRemainingTime(remaining)
-          countdownTextView?.text = "Unblocks in $formattedTime"
+          val displayText = "Unblocks in $formattedTime"
+          android.util.Log.d("BlockerService", "Setting countdown text: '$displayText', textView=${countdownTextView?.text}")
+          countdownTextView?.text = displayText
+          android.util.Log.d("BlockerService", "After set, textView.text='${countdownTextView?.text}', width=${countdownTextView?.width}, height=${countdownTextView?.height}, visibility=${countdownTextView?.visibility}")
 
           // Schedule next update in 1 second
           handler.postDelayed(this, 1000)
         } else {
           // Time's up - the cleanup will be handled by cleanupExpiredSessions
-          countdownTextView?.text = "Unblocking..."
+          countdownTextView?.apply {
+            text = "Unblocking..."
+            invalidate()
+            requestLayout()
+          }
         }
       }
     }
@@ -518,13 +582,17 @@ class BlockerAccessibilityService : AccessibilityService() {
   }
 
   /**
-   * Stop the countdown timer.
+   * Stop the countdown timer and clear references.
    */
   private fun stopCountdown() {
     countdownRunnable?.let { handler.removeCallbacks(it) }
     countdownRunnable = null
     countdownTextView = null
+    titleTextView = null
+    subtitleTextView = null
     sessionEndTime = null
+    currentBlockedPackage = null
+    currentStyle = null
   }
 
   /**
@@ -598,8 +666,8 @@ class BlockerAccessibilityService : AccessibilityService() {
       // Create vertical LinearLayout for content (icon, title, subtitle, countdown)
       val contentLayout = android.widget.LinearLayout(this).apply {
         orientation = android.widget.LinearLayout.VERTICAL
-        gravity = android.view.Gravity.CENTER
-        setPadding(40, 40, 40, 40)
+        gravity = android.view.Gravity.CENTER_HORIZONTAL  // Only center horizontally, not width
+        setPadding(16, 40, 16, 40)  // Reduced horizontal padding since we have margins on parent
       }
 
       // Create vertical LinearLayout for buttons at bottom
@@ -661,42 +729,94 @@ class BlockerAccessibilityService : AccessibilityService() {
         android.util.Log.w("BlockerService", "Could not load icon", e)
       }
 
-      // Add title
+      // Get session for template variable resolution
+      val session = sessions[sessionId]
+
+      // Store current context for countdown updates
+      currentBlockedPackage = blockedPackage
+      currentStyle = style
+
+      // Add title with template variable support
       val titleView = TextView(this).apply {
-        text = style.title
+        val resolvedTitle = resolveTemplateVariables(
+          style.title ?: "Stay Focused",
+          blockedPackage,
+          session?.endsAt
+        )
+        text = resolvedTitle
         textSize = 28f
         val defaultTitleColor = if (style.backgroundBlurStyle == "light") 0xFF2A2A2A.toInt() else 0xFFFFFFFF.toInt()
         setTextColor(style.titleColor?.toAndroidColor() ?: defaultTitleColor)
         gravity = android.view.Gravity.CENTER
         setPadding(0, 0, 0, 16)
         typeface = android.graphics.Typeface.DEFAULT_BOLD
+        // Force minimum width to ensure text is visible
+        minWidth = (200 * resources.displayMetrics.density).toInt()
+        // Ensure text wrapping works properly
+        maxLines = 2
+        ellipsize = android.text.TextUtils.TruncateAt.END
+      }.also {
+        titleTextView = it
       }
 
-      // Add subtitle/message
+      // Add subtitle/message - SIMPLIFIED WITHOUT TEMPLATE VARIABLES FOR TESTING
       val subtitleView = TextView(this).apply {
-        text = style.resolveSubtitle()
-        textSize = 16f
-        val defaultSubtitleColor = if (style.backgroundBlurStyle == "light") 0xFF6D6D6D.toInt() else 0xFFCCCCCC.toInt()
-        setTextColor(style.subtitleColor?.toAndroidColor() ?: defaultSubtitleColor)
+        // HARDCODED TEST - bypass all template logic
+        text = "Open app to unlock this is a test"
+        textSize = 18f
+        setTextColor(0xFFC8C8C8.toInt())  // Light gray
         gravity = android.view.Gravity.CENTER
-        setPadding(32, 0, 32, 24)
+        setPadding(16, 8, 16, 24)
+
+        // Add measurement listener to diagnose layout issues
+        viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+          override fun onGlobalLayout() {
+            android.util.Log.d("BlockerService", "===== SUBTITLE MEASUREMENT DEBUG =====")
+            android.util.Log.d("BlockerService", "Text: '${text}'")
+            android.util.Log.d("BlockerService", "Measured Width: ${measuredWidth}px (${measuredWidth / resources.displayMetrics.density}dp)")
+            android.util.Log.d("BlockerService", "Measured Height: ${measuredHeight}px (${measuredHeight / resources.displayMetrics.density}dp)")
+            android.util.Log.d("BlockerService", "Actual Width: ${width}px (${width / resources.displayMetrics.density}dp)")
+            android.util.Log.d("BlockerService", "Actual Height: ${height}px (${height / resources.displayMetrics.density}dp)")
+            android.util.Log.d("BlockerService", "Layout Width: ${layoutParams.width}")
+            android.util.Log.d("BlockerService", "Layout Height: ${layoutParams.height}")
+            android.util.Log.d("BlockerService", "Parent Width: ${(parent as? android.view.View)?.width}px")
+            android.util.Log.d("BlockerService", "Parent Measured Width: ${(parent as? android.view.View)?.measuredWidth}px")
+            android.util.Log.d("BlockerService", "Screen Width: ${resources.displayMetrics.widthPixels}px (${resources.displayMetrics.widthPixels / resources.displayMetrics.density}dp)")
+            android.util.Log.d("BlockerService", "Text Paint Width: ${paint.measureText(text.toString())}px")
+            android.util.Log.d("BlockerService", "======================================")
+
+            // Remove listener after first measurement
+            viewTreeObserver.removeOnGlobalLayoutListener(this)
+          }
+        })
+
+        android.util.Log.d("BlockerService", "===== SUBTITLE SIMPLE TEST =====")
+        android.util.Log.d("BlockerService", "Hardcoded text: '${this.text}'")
+        android.util.Log.d("BlockerService", "==========================")
+      }.also {
+        subtitleTextView = it
       }
 
-      // Add countdown for temporary blocks
-      val session = sessions[sessionId]
+      // Add countdown for temporary blocks (if session has endTime)
       val countdownView = if (session?.endsAt != null) {
+        android.util.Log.d("BlockerService", "Creating countdown view for session ${session.id}, endsAt: ${session.endsAt}")
         TextView(this).apply {
           text = "Calculating..."
-          textSize = 16f
-          setTextColor(0xFFFFAA00.toInt()) // Orange color for countdown
+          textSize = 20f  // Increased from 16f
+          setTextColor(0xFFFF6B00.toInt()) // Brighter orange color
           gravity = android.view.Gravity.CENTER
-          setPadding(0, 0, 0, 24)
-          typeface = android.graphics.Typeface.MONOSPACE
+          setPadding(0, 16, 0, 32)  // Increased padding
+          typeface = android.graphics.Typeface.DEFAULT_BOLD  // Bold font
+          // Force minimum dimensions to ensure visibility
+          minWidth = (200 * resources.displayMetrics.density).toInt()
+          minHeight = (40 * resources.displayMetrics.density).toInt()
         }.also {
           countdownTextView = it
+          android.util.Log.d("BlockerService", "countdownTextView assigned, starting countdown...")
           startCountdown(session.endsAt)
         }
       } else {
+        android.util.Log.d("BlockerService", "No countdown view created - session.endsAt is null")
         null
       }
 
@@ -769,13 +889,26 @@ class BlockerAccessibilityService : AccessibilityService() {
         null
       }
 
-      // Add content views to content layout
-      contentLayout.addView(titleView)
-      contentLayout.addView(subtitleView)
+      // Add content views to content layout with explicit MATCH_PARENT width
+      val titleParams = android.widget.LinearLayout.LayoutParams(
+        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+      )
+      contentLayout.addView(titleView, titleParams)
+
+      val subtitleParams = android.widget.LinearLayout.LayoutParams(
+        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+      )
+      contentLayout.addView(subtitleView, subtitleParams)
 
       // Add countdown view if it exists (temporary block)
       if (countdownView != null) {
-        contentLayout.addView(countdownView)
+        val countdownParams = android.widget.LinearLayout.LayoutParams(
+          android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+          android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        contentLayout.addView(countdownView, countdownParams)
       }
 
       // Add primary button with full width
@@ -796,16 +929,7 @@ class BlockerAccessibilityService : AccessibilityService() {
         buttonLayout.addView(secondaryButton, secondaryButtonParams)
       }
 
-      // Add content layout centered in container
-      val contentParams = FrameLayout.LayoutParams(
-        FrameLayout.LayoutParams.WRAP_CONTENT,
-        FrameLayout.LayoutParams.WRAP_CONTENT
-      ).apply {
-        gravity = android.view.Gravity.CENTER
-      }
-      container.addView(contentLayout, contentParams)
-
-      // Add button layout at bottom
+      // Add button layout at bottom FIRST
       val buttonParams = FrameLayout.LayoutParams(
         FrameLayout.LayoutParams.MATCH_PARENT,
         FrameLayout.LayoutParams.WRAP_CONTENT
@@ -813,6 +937,27 @@ class BlockerAccessibilityService : AccessibilityService() {
         gravity = android.view.Gravity.BOTTOM
       }
       container.addView(buttonLayout, buttonParams)
+
+      // Add content layout centered in container with bottom margin for buttons
+      // Calculate button height to add as bottom margin
+      buttonLayout.measure(
+        android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED),
+        android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED)
+      )
+      val buttonHeight = (150 * resources.displayMetrics.density).toInt() // Reserve space for buttons
+
+      // FIX: Use MATCH_PARENT width so CENTER_HORIZONTAL gravity only affects positioning, not measurement
+      val contentParams = FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams.MATCH_PARENT,  // Changed from WRAP_CONTENT
+        FrameLayout.LayoutParams.WRAP_CONTENT
+      ).apply {
+        gravity = android.view.Gravity.CENTER_VERTICAL  // Only center vertically
+        bottomMargin = buttonHeight // Push content up to avoid button overlap
+        // Add horizontal margins to prevent edge-to-edge content
+        leftMargin = (32 * resources.displayMetrics.density).toInt()
+        rightMargin = (32 * resources.displayMetrics.density).toInt()
+      }
+      container.addView(contentLayout, contentParams)
 
       overlayView = container
       windowManager?.addView(container, layoutParams)
