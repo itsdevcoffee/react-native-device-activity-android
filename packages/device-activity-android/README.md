@@ -474,6 +474,12 @@ if (!overlayEnabled) {
 }
 ```
 
+## Documentation
+
+For a comprehensive guide with detailed API examples and common use cases, see:
+
+- **[Getting Started Guide](../../GETTING_STARTED.md)** - Step-by-step guide with 20+ API examples, real-world use cases, best practices, and troubleshooting
+
 ## Example App
 
 See the [example app](../../apps/example) for a complete working implementation that demonstrates:

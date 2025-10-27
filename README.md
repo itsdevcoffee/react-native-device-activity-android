@@ -60,6 +60,7 @@ expo run:android
 
 ## 📖 Documentation
 
+- [Getting Started Guide](./GETTING_STARTED.md) - Comprehensive guide with API examples and use cases
 - [Library README](./packages/device-activity-android/README.md) - Full API documentation
 - [Example App](./apps/example) - Working demo with all features
 
