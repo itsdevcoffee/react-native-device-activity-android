@@ -6,6 +6,7 @@ export const storage = createMMKV()
 export const STORAGE_KEYS = {
   BLOCKED_PACKAGES: 'blockedPackages',
   SELECTOR_MODE: 'selectorMode',
+  ONBOARDING_COMPLETE: 'onboardingComplete',
 } as const
 
 // Type-safe storage helpers
@@ -29,5 +30,15 @@ export const storageHelpers = {
   // Save selector mode preference
   setSelectorMode: (mode: 'list' | 'grid'): void => {
     storage.set(STORAGE_KEYS.SELECTOR_MODE, mode)
+  },
+
+  // Get onboarding completion status
+  getOnboardingComplete: (): boolean => {
+    return storage.getBoolean(STORAGE_KEYS.ONBOARDING_COMPLETE) || false
+  },
+
+  // Set onboarding completion status
+  setOnboardingComplete: (complete: boolean): void => {
+    storage.set(STORAGE_KEYS.ONBOARDING_COMPLETE, complete)
   },
 }
