@@ -142,13 +142,14 @@ export default function App() {
 
 ## Permissions
 
-This library requires three Android permissions that users must grant manually through system settings.
+This library requires four Android permissions that users must grant manually through system settings.
 
 ### Required Permissions
 
 1. **Accessibility Service** - Required to detect when users switch between apps
 2. **Draw Over Apps** (Overlay) - Required to display the block screen
-3. **Usage Access** - Optional but recommended for better app detection
+3. **Usage Access** - Required for reliable app detection via UsageStatsManager
+4. **Schedule Exact Alarms** - Required for temporary unblock feature (Android 12+)
 
 ### Requesting Permissions Flow
 
@@ -193,7 +194,8 @@ function PermissionsScreen() {
   const allPermissionsGranted =
     permissions.accessibilityEnabled &&
     permissions.overlayEnabled &&
-    permissions.usageAccessEnabled
+    permissions.usageAccessEnabled &&
+    permissions.scheduleExactAlarmEnabled
 
   return (
     <View>
@@ -218,6 +220,13 @@ function PermissionsScreen() {
         granted={permissions.usageAccessEnabled}
         onGrant={requestUsageAccess}
         description="Improves app detection accuracy"
+      />
+
+      <PermissionItem
+        name="Schedule Exact Alarms"
+        granted={permissions.scheduleExactAlarmEnabled}
+        description="Enables temporary unblock feature (usually granted automatically)"
+        optional={true}
       />
 
       {allPermissionsGranted && (
@@ -1219,7 +1228,7 @@ function ProgressiveBlocking() {
 async function safeStartSession(config: SessionConfig, style?: ShieldStyle) {
   const permissions = await DeviceActivityAndroid.getPermissionsStatus()
 
-  if (!permissions.accessibilityEnabled || !permissions.overlayEnabled) {
+  if (!permissions.accessibilityEnabled || !permissions.overlayEnabled || !permissions.usageAccessEnabled) {
     Alert.alert(
       'Permissions Required',
       'Please grant all required permissions first',

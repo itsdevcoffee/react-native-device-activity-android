@@ -86,11 +86,12 @@ const sub = DeviceActivityAndroid.addListener(event => {
 
 ## 🔒 Permissions Required
 
-This library requires three Android permissions:
+This library requires four Android permissions:
 
 1. **Accessibility Service** - Detects app switches
 2. **Draw Over Apps** - Shows block screens
-3. **Usage Access** - (Optional) For analytics
+3. **Usage Access** - For reliable app detection
+4. **Schedule Exact Alarms** - For temporary unblock feature (Android 12+)
 
 All permissions must be granted by the user in Android Settings. The library provides helper methods to open the appropriate settings screens.
 
@@ -159,7 +160,7 @@ cd apps/example && expo run:android
 The best way to test is using the example app:
 
 1. Build and install on a real Android device (emulator works but some features may be limited)
-2. Grant all three permissions
+2. Grant all four permissions
 3. Add some app package names (e.g., `com.instagram.android`)
 4. Start a focus session
 5. Try to open a blocked app - you should see the block screen

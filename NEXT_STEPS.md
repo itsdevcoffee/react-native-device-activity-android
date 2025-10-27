@@ -86,7 +86,7 @@ yarn typecheck
 
 Before considering the project production-ready, test:
 
-- [ ] All three permissions can be granted
+- [ ] All four permissions can be granted
 - [ ] Starting a session works
 - [ ] Blocked apps show the overlay
 - [ ] Custom block screen text appears

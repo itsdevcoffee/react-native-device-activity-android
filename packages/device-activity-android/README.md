@@ -58,11 +58,12 @@ expo run:android
 
 ## Permissions
 
-This library requires three special permissions:
+This library requires four Android permissions:
 
 1. **Accessibility Service** - Monitors foreground app changes
 2. **Draw Over Apps** (Overlay) - Shows block screen over blocked apps
-3. **Usage Access** - Provides app usage statistics (optional, for analytics)
+3. **Usage Access** - Provides app usage statistics for reliable app detection
+4. **Schedule Exact Alarms** - Required for temporary unblock feature (Android 12+)
 
 ### Requesting Permissions
 
@@ -72,7 +73,12 @@ import DeviceActivityAndroid from '@breakr/react-native-device-activity-android'
 // Check current status
 const status = await DeviceActivityAndroid.getPermissionsStatus()
 console.log(status)
-// { accessibilityEnabled: false, overlayEnabled: false, usageAccessEnabled: false }
+// {
+//   accessibilityEnabled: false,
+//   overlayEnabled: false,
+//   usageAccessEnabled: false,
+//   scheduleExactAlarmEnabled: false
+// }
 
 // Open settings to grant permissions
 await DeviceActivityAndroid.requestAccessibilityPermission()
@@ -539,8 +545,9 @@ The current implementation uses UsageStatsManager polling, which:
 | Accessibility Service | Display system overlays, detect blocking context | `requestAccessibilityPermission()` |
 | Draw Over Apps | Show blocking overlay on top of blocked apps | `requestOverlayPermission()` |
 | Usage Access | Monitor foreground app via UsageStatsManager | `requestUsageAccessPermission()` |
+| Schedule Exact Alarms | Enable temporary unblock feature with auto-resume | Granted automatically on install (Android 12+) |
 
-All three permissions must be granted by the user in system settings.
+All permissions must be granted by the user in system settings (except Schedule Exact Alarms, which is typically granted on install).
 
 ## Comparison with iOS DeviceActivity
 
