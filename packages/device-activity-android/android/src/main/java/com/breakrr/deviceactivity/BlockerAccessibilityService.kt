@@ -244,6 +244,7 @@ class BlockerAccessibilityService : AccessibilityService() {
     val iconTint: RGBColor? = null,
     val primaryImagePath: String? = null,
     val iconSystemName: String? = null,
+    val iconSize: Int? = null, // Size in dp, defaults to 64dp if not specified
 
     // Blur effect (Android: light, dark, or none)
     val backgroundBlurStyle: String? = "light", // "light", "dark", "none"
@@ -703,22 +704,39 @@ class BlockerAccessibilityService : AccessibilityService() {
 
       // Get app icon or custom image
       try {
-        val iconSize = (120 * resources.displayMetrics.density).toInt()
+        // Use iconSize from style if provided, default to 64dp
+        val iconSizeDp = style.iconSize ?: 64
+        val iconSize = (iconSizeDp * resources.displayMetrics.density).toInt()
         val iconMargin = (32 * resources.displayMetrics.density).toInt()
 
         val iconView = ImageView(this).apply {
+          // Track whether we successfully loaded a custom image
+          var loadedCustomImage = false
+
           // Try to load custom image first, fallback to app icon
           if (style.primaryImagePath != null) {
             try {
-              // Load custom image from path (could be from assets or file system)
-              val drawable = android.graphics.drawable.Drawable.createFromPath(style.primaryImagePath)
-              if (drawable != null) {
-                setImageDrawable(drawable)
+              // Load custom image from file system path using BitmapFactory
+              val file = java.io.File(style.primaryImagePath)
+              if (file.exists()) {
+                val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
+                if (bitmap != null) {
+                  setImageBitmap(bitmap)
+                  loadedCustomImage = true
+                  android.util.Log.d("BlockerService", "Loaded custom icon from: ${file.absolutePath}")
+                } else {
+                  // Fallback to app icon if bitmap decode fails
+                  val packageManager = applicationContext.packageManager
+                  val appIcon = packageManager.getApplicationIcon(blockedPackage)
+                  setImageDrawable(appIcon)
+                  android.util.Log.w("BlockerService", "Failed to decode custom icon, using app icon")
+                }
               } else {
-                // Fallback to app icon if custom image fails
+                // Fallback to app icon if file doesn't exist
                 val packageManager = applicationContext.packageManager
                 val appIcon = packageManager.getApplicationIcon(blockedPackage)
                 setImageDrawable(appIcon)
+                android.util.Log.w("BlockerService", "Custom icon file not found: ${file.absolutePath}, using app icon")
               }
             } catch (e: Exception) {
               android.util.Log.w("BlockerService", "Could not load custom image, using app icon", e)
@@ -733,17 +751,21 @@ class BlockerAccessibilityService : AccessibilityService() {
             setImageDrawable(appIcon)
           }
 
-          // Apply icon tint if specified, otherwise grayscale
-          if (style.iconTint != null) {
-            setColorFilter(style.iconTint.toAndroidColor(), android.graphics.PorterDuff.Mode.SRC_IN)
-          } else {
-            // Default iOS-style grayscale treatment
-            val colorMatrix = ColorMatrix().apply {
-              setSaturation(0f)
+          // Apply color filter only if NOT using a custom image
+          if (!loadedCustomImage) {
+            // Apply icon tint if specified, otherwise grayscale
+            if (style.iconTint != null) {
+              setColorFilter(style.iconTint.toAndroidColor(), android.graphics.PorterDuff.Mode.SRC_IN)
+            } else {
+              // Default iOS-style grayscale treatment
+              val colorMatrix = ColorMatrix().apply {
+                setSaturation(0f)
+              }
+              colorFilter = ColorMatrixColorFilter(colorMatrix)
+              alpha = 0.4f
             }
-            colorFilter = ColorMatrixColorFilter(colorMatrix)
-            alpha = 0.4f
           }
+          // If custom image was loaded, no color filter is applied - show original colors
         }
 
         val iconParams = android.widget.LinearLayout.LayoutParams(iconSize, iconSize).apply {
@@ -840,12 +862,23 @@ class BlockerAccessibilityService : AccessibilityService() {
         hideOverlay()
         RNDeviceActivityAndroidModule.sendEvent("block_dismissed", blockedPackage, sessionId)
 
-        // Return to home screen
-        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-          addCategory(Intent.CATEGORY_HOME)
-          flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        // Return to parent app (the app using this library)
+        val parentPackageName = packageName
+        val launchIntent = packageManager.getLaunchIntentForPackage(parentPackageName)
+
+        if (launchIntent != null) {
+          launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          launchIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+          launchIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+          startActivity(launchIntent)
+        } else {
+          // Fallback to home screen if launch intent not available
+          val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+          }
+          startActivity(homeIntent)
         }
-        startActivity(homeIntent)
       }
 
       // Add optional secondary button

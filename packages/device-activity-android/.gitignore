@@ -1,0 +1,20 @@
+# Build outputs
+/lib
+*.tsbuildinfo
+
+# Dependencies
+node_modules/
+
+# Native build artifacts
+android/build/
+android/.gradle/
+android/.cxx/
+*.iml
+.idea/
+
+# Test coverage
+coverage/
+
+# OS files
+.DS_Store
+Thumbs.db

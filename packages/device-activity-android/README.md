@@ -164,6 +164,26 @@ const subscription = DeviceActivityAndroid.addListener(event => {
 })
 ```
 
+#### Temporary Block
+
+```typescript
+// Block all apps for 5 minutes (300 seconds)
+await DeviceActivityAndroid.temporaryBlock(300, {
+  title: 'Quick Focus',
+  subtitle: 'Taking a 5 minute break from apps',
+  primaryButtonLabel: 'Dismiss'
+})
+
+// Session automatically expires after duration
+// Listen for when session expires
+const subscription = DeviceActivityAndroid.addListener(event => {
+  if (event.type === 'session_expired') {
+    console.log('Temporary block ended:', event.sessionId)
+    subscription.remove()
+  }
+})
+```
+
 #### Unblock All Apps
 
 ```typescript
@@ -231,6 +251,119 @@ apps.forEach(app => {
 
 **Note**: This method filters out system apps and returns only apps with launcher activities. It includes updated system apps (like pre-installed apps that have been updated via Play Store).
 
+### Custom Shield Icons
+
+You can display custom icons on the blocking overlay instead of the default emoji. This is useful for branding your focus/wellbeing app.
+
+#### Setting Up Custom Icons
+
+1. **Add your icon asset** to your project (e.g., `assets/robot-head.png`)
+
+2. **Create a constants file** to manage versioning:
+
+```typescript
+// constants.ts
+export const ICON_VERSION_NUMBER = 1
+export const ICON_ASSET_PATH = './assets/robot-head.png'
+export const DEFAULT_ICON_SIZE = 64 // in dp
+```
+
+3. **Cache the icon** from React Native assets to internal storage:
+
+```typescript
+// utils/iconHelper.ts
+import { NativeModules } from 'react-native'
+import { ICON_ASSET_PATH, ICON_VERSION_NUMBER } from '../constants'
+
+const { RNDeviceActivityAndroid } = NativeModules
+
+export async function ensureCustomIconCached(): Promise<string | null> {
+  try {
+    const cachedPath = await RNDeviceActivityAndroid.ensureIconCached(
+      ICON_ASSET_PATH,
+      ICON_VERSION_NUMBER
+    )
+    if (cachedPath) {
+      console.log('Icon cached successfully:', cachedPath)
+      return cachedPath
+    }
+    return null
+  } catch (error) {
+    console.error('Error caching custom icon:', error)
+    return null
+  }
+}
+```
+
+4. **Use the custom icon** in your shield configuration:
+
+```typescript
+import DeviceActivityAndroid from '@breakrr/react-native-device-activity-android'
+import { ensureCustomIconCached } from './utils/iconHelper'
+import { ICON_ASSET_PATH, DEFAULT_ICON_SIZE } from './constants'
+
+// Cache the icon when app starts
+useEffect(() => {
+  ensureCustomIconCached()
+}, [])
+
+// Use in shield style
+await DeviceActivityAndroid.startSession(
+  {
+    id: 'focus-session',
+    blockedPackages: ['com.instagram.android'],
+    endsAt: Date.now() + 30 * 60 * 1000,
+  },
+  {
+    title: 'Stay Focused',
+    subtitle: 'This app is blocked during your focus session',
+    primaryImagePath: ICON_ASSET_PATH,
+    iconSize: DEFAULT_ICON_SIZE, // Size in dp (density-independent pixels)
+    backgroundColor: { red: 255, green: 253, blue: 249 },
+  }
+)
+```
+
+#### Icon Versioning and Caching
+
+The library uses a versioning system for icon caching:
+
+- **Path format**: Use relative paths with `./` prefix (e.g., `./assets/robot-head.png`)
+- **Cached filename**: `breakrr-icon-v{version}.png` (e.g., `breakrr-icon-v1.png`)
+- **Storage location**: Android internal storage (`/data/data/your.package/files/shield-icons/`)
+- **Cache invalidation**: Increment the version number when you update the icon
+- **Old versions**: Automatically cleaned up when new version is cached
+
+The `ensureIconCached()` method:
+- Checks if the current version is already cached
+- If not, copies the asset from React Native bundle to internal storage
+- Returns the absolute file path for use in shield configurations
+- Returns `null` if the operation fails
+
+#### Custom Icon Configuration
+
+The `ShieldStyle` type supports the following icon-related fields:
+
+```typescript
+type ShieldStyle = {
+  // Icon configuration
+  primaryImagePath?: string  // Path to custom icon image file
+  iconSize?: number          // Icon size in dp (default: 64dp)
+  iconTint?: RGBColor        // Optional tint color for the icon
+
+  // Deprecated fields (still supported for backwards compatibility)
+  iconSystemName?: string    // System icon name (Android drawable resource)
+
+  // ... other style fields
+}
+```
+
+**Notes:**
+- Icon size is specified in density-independent pixels (dp)
+- If `primaryImagePath` is not provided or fails to load, the overlay shows a default emoji
+- The cached icon persists across app restarts
+- Asset copying happens once per version, subsequent calls use the cached file
+
 ### API Reference
 
 #### Methods
@@ -242,7 +375,7 @@ apps.forEach(app => {
 - `requestUsageAccessPermission(): Promise<void>` - Open system settings to grant usage access permission
 
 ##### Session Management
-- `startSession(config: SessionConfig, style?: ShieldStyle): Promise<void>` - Start a new blocking session
+- `startSession(config: SessionConfig, style?: ShieldStyle, shieldId?: string): Promise<void>` - Start a new blocking session with inline style or pre-configured shield ID
 - `updateSession(config: Partial<SessionConfig> & { id: string }): Promise<void>` - Update an existing session configuration
 - `stopSession(sessionId: string): Promise<void>` - Stop a specific blocking session by ID
 - `stopAllSessions(): Promise<void>` - Stop all active blocking sessions
@@ -250,14 +383,34 @@ apps.forEach(app => {
 - `unblockAllApps(): Promise<void>` - Unblock all apps by stopping all sessions (alias for stopAllSessions)
 - `getBlockStatus(): Promise<BlockStatus>` - Get current blocking status including active sessions
 - `temporaryUnblock(durationSeconds: number): Promise<void>` - Temporarily pause all blocking for N seconds, then auto-resume
+- `temporaryBlock(durationSeconds: number, style?: ShieldStyle): Promise<void>` - Block all apps for N seconds with automatic expiration
 
 ##### App Information
 - `getCurrentForegroundApp(): Promise<ForegroundApp>` - Get the current foreground app package name (best effort)
-- `getInstalledApps(includeIcons?: boolean): Promise<Array<{ packageName: string; name: string; icon?: string }>>` - Get list of installed user-facing applications with optional icons
+- `getInstalledApps(includeIcons?: boolean): Promise<Array<{ packageName: string; name: string; category: number; icon?: string }>>` - Get list of installed user-facing applications with optional icons and categories
 - `isServiceRunning(): Promise<boolean>` - Check if the accessibility service is currently running
+- `getAppMetadataDebug(): Promise<Array<AppMetadata>>` - DEBUG: Get comprehensive metadata for all installed apps (for debugging and development)
+
+##### Shield Configuration
+- `configureShielding(configId: string, style: ShieldStyle): Promise<void>` - Register a reusable shield configuration with a unique ID
+- `updateShielding(configId: string, style: ShieldStyle): Promise<void>` - Update an existing shield configuration
+- `removeShielding(configId: string): Promise<boolean>` - Remove a shield configuration by ID
+- `getShieldingConfigurations(): Promise<{ [configId: string]: ShieldStyle }>` - Get all registered shield configurations
+- `ensureIconCached(imagePath: string, version: number): Promise<string | null>` - Copy custom icon from React Native assets to internal storage with versioning support
 
 ##### Event Handling
-- `addListener(callback: (event: BlockEvent) => void): { remove(): void }` - Add a listener for block events (block_shown, block_dismissed, app_attempt, service_state)
+- `addListener(callback: (event: BlockEvent) => void): { remove(): void }` - Add a listener for block events
+
+**Event Types:**
+- `block_shown` - Block overlay was shown for a session
+- `block_dismissed` - User dismissed the block overlay (primary button); redirects user back to your app
+- `secondary_action` - User tapped secondary button on block overlay
+- `app_attempt` - User attempted to open a blocked app
+- `service_state` - Accessibility service started or stopped
+- `temporary_unblock_ended` - Temporary unblock period ended, blocking resumed
+- `session_expired` - A blocking session reached its end time and expired
+
+**Note:** When the user taps the primary button (e.g., "Return to Focus"), they are automatically redirected back to your app. This helps guide users back to their focus/wellbeing app after attempting to access a blocked app.
 
 See [index.d.ts](./index.d.ts) for complete type definitions.
 

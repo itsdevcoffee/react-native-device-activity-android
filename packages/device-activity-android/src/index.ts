@@ -89,12 +89,14 @@ const DeviceActivityAndroid = {
 
   /**
    * Start a new blocking session.
+   * Supports both inline styles and pre-configured shield IDs.
    *
    * @param config - Session configuration including blocked packages and time window
-   * @param style - Optional styling for the block overlay screen
+   * @param style - Optional inline styling for the block overlay screen
+   * @param shieldId - Optional pre-configured shield ID to use
    */
-  startSession(config: SessionConfig, style?: ShieldStyle): Promise<void> {
-    return nativeModule.startSession(config, style || {})
+  startSession(config: SessionConfig, style?: ShieldStyle, shieldId?: string): Promise<void> {
+    return nativeModule.startSession(config, style || null, shieldId || null)
   },
 
   /**
@@ -317,6 +319,95 @@ const DeviceActivityAndroid = {
     }>
   > {
     return nativeModule.getAppMetadataDebug()
+  },
+
+  /**
+   * Register a shield configuration with a unique ID.
+   * The configuration can be referenced later when starting sessions.
+   *
+   * @param configId - Unique identifier for this shield configuration
+   * @param style - Shield style configuration
+   * @returns Promise that resolves when configuration is saved
+   *
+   * @example
+   * ```ts
+   * await DeviceActivityAndroid.configureShielding('gentle', {
+   *   title: '🔒 focus mode',
+   *   subtitle: 'gentle shield active',
+   *   backgroundColor: { red: 255, green: 253, blue: 249 },
+   * })
+   * ```
+   */
+  configureShielding(configId: string, style: ShieldStyle): Promise<void> {
+    return nativeModule.configureShielding(configId, style)
+  },
+
+  /**
+   * Update an existing shield configuration.
+   * If the configuration doesn't exist, it will be created.
+   *
+   * @param configId - Unique identifier for the shield configuration
+   * @param style - Updated shield style configuration
+   * @returns Promise that resolves when configuration is updated
+   */
+  updateShielding(configId: string, style: ShieldStyle): Promise<void> {
+    return nativeModule.updateShielding(configId, style)
+  },
+
+  /**
+   * Remove a shield configuration by ID.
+   *
+   * @param configId - Unique identifier for the shield configuration
+   * @returns Promise resolving to true if configuration was found and removed
+   *
+   * @example
+   * ```ts
+   * const removed = await DeviceActivityAndroid.removeShielding('gentle')
+   * if (removed) {
+   *   console.log('Configuration removed successfully')
+   * }
+   * ```
+   */
+  removeShielding(configId: string): Promise<boolean> {
+    return nativeModule.removeShielding(configId)
+  },
+
+  /**
+   * Get all registered shield configurations.
+   *
+   * @returns Promise resolving to a map of configuration IDs to their styles
+   *
+   * @example
+   * ```ts
+   * const configs = await DeviceActivityAndroid.getShieldingConfigurations()
+   * console.log('Registered shields:', Object.keys(configs))
+   * ```
+   */
+  getShieldingConfigurations(): Promise<{ [configId: string]: ShieldStyle }> {
+    return nativeModule.getShieldingConfigurations()
+  },
+
+  /**
+   * Ensure a custom icon is cached from React Native assets to internal storage.
+   * Uses versioning to support cache invalidation when icons change.
+   *
+   * @param imagePath - Path to image asset (e.g., "./assets/robot-head.png")
+   * @param version - Version number for cache invalidation
+   * @returns Promise resolving to cached file path or null if failed
+   *
+   * @example
+   * ```ts
+   * const cachedPath = await DeviceActivityAndroid.ensureIconCached(
+   *   './assets/robot-head.png',
+   *   1
+   * )
+   * if (cachedPath) {
+   *   console.log('Icon cached at:', cachedPath)
+   * }
+   * ```
+   */
+  ensureIconCached(imagePath: string, version: number): Promise<string | null> {
+    return nativeModule.ensureIconCached(imagePath, version)
   },
 
   /**

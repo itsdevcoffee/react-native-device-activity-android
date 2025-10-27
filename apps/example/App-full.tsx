@@ -21,6 +21,7 @@ export default function App() {
     accessibilityEnabled: false,
     overlayEnabled: false,
     usageAccessEnabled: false,
+    scheduleExactAlarmEnabled: false,
   })
   const [blockedPackages, setBlockedPackages] = useState(
     'com.instagram.android,com.twitter.android'

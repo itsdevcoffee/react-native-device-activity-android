@@ -30,11 +30,6 @@
       </intent-filter>
       <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service_config"/>
     </service>
-    <receiver android:name="com.breakrr.deviceactivity.TemporaryUnblockReceiver" android:enabled="true" android:exported="false">
-      <intent-filter>
-        <action android:name="com.breakrr.deviceactivity.RESTORE_SESSIONS"/>
-      </intent-filter>
-    </receiver>
     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
@@ -48,5 +43,10 @@
         <data android:scheme="exp+device-activity-android-example"/>
       </intent-filter>
     </activity>
+    <receiver android:name="com.breakrr.deviceactivity.TemporaryUnblockReceiver" android:enabled="true" android:exported="false">
+      <intent-filter>
+        <action android:name="com.breakrr.deviceactivity.RESTORE_SESSIONS"/>
+      </intent-filter>
+    </receiver>
   </application>
 </manifest>

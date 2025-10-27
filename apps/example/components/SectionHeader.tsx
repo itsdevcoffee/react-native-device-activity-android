@@ -17,8 +17,10 @@ type SectionHeaderProps = {
   onToggle: () => void
   selectedCount: number
   totalCount: number
-  onSelectVisible: () => void
-  onClearVisible: () => void
+  onSelectVisible?: () => void
+  onClearVisible?: () => void
+  onSelectAll?: () => void
+  onClearAll?: () => void
   theme: ThemeTokens
   collapsible?: boolean
   isSticky?: boolean
@@ -47,6 +49,8 @@ export const SectionHeader = memo(
     totalCount,
     onSelectVisible,
     onClearVisible,
+    onSelectAll,
+    onClearAll,
     theme,
     collapsible = true,
     isSticky = false,
@@ -73,9 +77,19 @@ export const SectionHeader = memo(
 
     const handleCheckboxPress = () => {
       if (allSelected) {
-        onClearVisible()
+        // Use onClearAll if available, otherwise onClearVisible
+        if (onClearAll) {
+          onClearAll()
+        } else if (onClearVisible) {
+          onClearVisible()
+        }
       } else {
-        onSelectVisible()
+        // Use onSelectAll if available, otherwise onSelectVisible
+        if (onSelectAll) {
+          onSelectAll()
+        } else if (onSelectVisible) {
+          onSelectVisible()
+        }
       }
     }
 

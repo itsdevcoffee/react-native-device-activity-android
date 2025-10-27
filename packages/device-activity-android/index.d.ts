@@ -46,6 +46,7 @@ export type ShieldStyle = {
   iconTint?: RGBColor
   primaryImagePath?: string
   iconSystemName?: string
+  iconSize?: number // Size in dp, defaults to 64dp if not specified
 
   // Blur effect (Android: light, dark, or none)
   backgroundBlurStyle?: BackgroundBlurStyle
@@ -70,6 +71,7 @@ export type BlockEvent =
   | { type: 'app_attempt'; packageName: string; sessionId: string; ts: number }
   | { type: 'service_state'; running: boolean; ts: number }
   | { type: 'temporary_unblock_ended'; ts: number }
+  | { type: 'session_expired'; sessionId: string; ts: number }
 
 export type BlockStatus = {
   isBlocking: boolean
@@ -80,13 +82,21 @@ export type BlockStatus = {
   timestamp: number
 }
 
+export type ShieldConfigurationMap = {
+  [configId: string]: ShieldStyle
+}
+
 declare const DeviceActivityAndroid: {
   getPermissionsStatus(): Promise<PermissionsStatus>
   requestAccessibilityPermission(): Promise<void>
   requestOverlayPermission(): Promise<void>
   requestUsageAccessPermission(): Promise<void>
   requestScheduleExactAlarmPermission(): Promise<void>
-  startSession(config: SessionConfig, style?: ShieldStyle): Promise<void>
+  startSession(
+    config: SessionConfig,
+    style?: ShieldStyle,
+    shieldId?: string
+  ): Promise<void>
   updateSession(
     config: Partial<SessionConfig> & { id: string }
   ): Promise<void>
@@ -100,6 +110,7 @@ declare const DeviceActivityAndroid: {
     Array<{
       packageName: string
       name: string
+      category: number
       icon?: string
     }>
   >
@@ -111,7 +122,61 @@ declare const DeviceActivityAndroid: {
   unblockAllApps(): Promise<void>
   getBlockStatus(): Promise<BlockStatus>
   temporaryUnblock(durationSeconds: number): Promise<void>
+  temporaryBlock(durationSeconds: number, style?: ShieldStyle): Promise<void>
+  getAppMetadataDebug(): Promise<
+    Array<{
+      packageName: string
+      name: string
+      versionName?: string
+      versionCode?: string
+      firstInstallTime?: number
+      lastUpdateTime?: number
+      isSystemApp: boolean
+      isUpdatedSystemApp: boolean
+      enabled: boolean
+      hasLauncherActivity: boolean
+      sourceDir: string
+      dataDir: string
+      uid: number
+      category?: number
+    }>
+  >
+  configureShielding(configId: string, style: ShieldStyle): Promise<void>
+  updateShielding(configId: string, style: ShieldStyle): Promise<void>
+  removeShielding(configId: string): Promise<boolean>
+  getShieldingConfigurations(): Promise<ShieldConfigurationMap>
+  ensureIconCached(imagePath: string, version: number): Promise<string | null>
   addListener(cb: (e: BlockEvent) => void): { remove(): void }
 }
 
 export default DeviceActivityAndroid
+
+// App category utilities (from appCategories.ts)
+export enum AppCategory {
+  UNDEFINED = -1,
+  GAME = 0,
+  AUDIO = 1,
+  VIDEO = 2,
+  IMAGE = 3,
+  SOCIAL = 4,
+  NEWS = 5,
+  MAPS = 6,
+  PRODUCTIVITY = 7,
+}
+
+export const APP_CATEGORY_LABELS: Record<AppCategory, string>
+export function getCategoryLabel(categoryId: number): string
+export function groupAppsByCategory<T extends { category?: number }>(
+  apps: T[]
+): Map<AppCategory, T[]>
+export function getCategoryCounts<T extends { category?: number }>(
+  apps: T[]
+): Record<AppCategory, number>
+export function getCategoryLabelWithCount(
+  categoryId: AppCategory,
+  count: number
+): string
+export const CATEGORY_DISPLAY_ORDER: AppCategory[]
+export const DEFAULT_CATEGORY_ORDER: string[]
+export function getCategoryIdFromName(name: string): AppCategory | null
+export function deduplicateCategoryNames(names: string[]): string[]

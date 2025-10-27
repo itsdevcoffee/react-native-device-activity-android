@@ -17,13 +17,21 @@
     "screen-time",
     "accessibility",
     "focus",
-    "digital-wellbeing"
+    "digital-wellbeing",
+    "wellbeing",
+    "app-blocker",
+    "focus-mode",
+    "productivity"
   ],
   "repository": {
     "type": "git",
     "url": "https://github.com/breakrr/react-native-device-activity-android.git",
     "directory": "packages/device-activity-android"
   },
+  "bugs": {
+    "url": "https://github.com/breakrr/react-native-device-activity-android/issues"
+  },
+  "homepage": "https://github.com/breakrr/react-native-device-activity-android#readme",
   "author": "Breakrr",
   "license": "MIT",
   "peerDependencies": {

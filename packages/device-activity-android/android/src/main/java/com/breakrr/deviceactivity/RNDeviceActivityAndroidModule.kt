@@ -18,6 +18,7 @@ import android.util.Base64
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.io.ByteArrayOutputStream
+import java.io.File
 
 /**
  * React Native bridge module for Device Activity Android.
@@ -30,6 +31,8 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
   companion object {
     const val NAME = "RNDeviceActivityAndroid"
     private const val EVENT_NAME = "RNDeviceActivityAndroidEvents"
+    private const val ICON_SIZE_PX = 96
+    private const val PNG_COMPRESSION_QUALITY = 100
 
     /**
      * Send an event to React Native JavaScript.
@@ -178,12 +181,32 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
 
   /**
    * Start a new blocking session.
+   * Supports both inline styles and shield configuration IDs.
+   *
+   * @param configMap Session configuration
+   * @param styleMap Optional inline shield style (can be null if using shieldId)
+   * @param shieldId Optional shield configuration ID to use
    */
   @ReactMethod
-  fun startSession(configMap: ReadableMap, styleMap: ReadableMap, promise: Promise) {
+  fun startSession(configMap: ReadableMap, styleMap: ReadableMap?, shieldId: String?, promise: Promise) {
     try {
       val config = parseSessionConfig(configMap)
-      val style = parseShieldStyle(styleMap)
+
+      // Determine which style to use (priority: inline style > shield ID > default)
+      val style = when {
+        // If inline style is provided, use it
+        styleMap != null -> parseShieldStyle(styleMap)
+        // If shield ID is provided, look it up
+        shieldId != null -> {
+          ShieldConfigurationStorageHelper.getConfiguration(reactContext, shieldId)
+            ?: run {
+              android.util.Log.w("RNDeviceActivity", "Shield configuration '$shieldId' not found, using default")
+              BlockerAccessibilityService.ShieldStyle()
+            }
+        }
+        // Otherwise use default
+        else -> BlockerAccessibilityService.ShieldStyle()
+      }
 
       BlockerAccessibilityService.addSession(config, style)
       promise.resolve(null)
@@ -460,7 +483,13 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
 
           if (packageInfo != null) {
             metadata.putString("versionName", packageInfo.versionName ?: "unknown")
-            metadata.putString("versionCode", packageInfo.versionCode.toString())
+            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+              packageInfo.longVersionCode.toString()
+            } else {
+              @Suppress("DEPRECATION")
+              packageInfo.versionCode.toString()
+            }
+            metadata.putString("versionCode", versionCode)
             metadata.putDouble("firstInstallTime", packageInfo.firstInstallTime.toDouble())
             metadata.putDouble("lastUpdateTime", packageInfo.lastUpdateTime.toDouble())
           }
@@ -503,6 +532,56 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
   }
 
   /**
+   * Get all user-facing apps that should be blockable.
+   * Applies the same filtering logic as getInstalledApps().
+   *
+   * @return Set of package names for blockable apps
+   */
+  private fun getFilteredUserApps(): Set<String> {
+    val packageManager = reactContext.packageManager
+    val installedApps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+    val blockedPackages = mutableSetOf<String>()
+
+    for (appInfo in installedApps) {
+      val packageName = appInfo.packageName
+
+      // Skip current app
+      if (packageName == reactContext.packageName) continue
+
+      // Skip system utilities
+      val systemUtilities = setOf(
+        "com.android.settings",
+        "com.android.documentsui",
+        "com.android.packageinstaller",
+        "com.google.android.packageinstaller"
+      )
+      if (packageName in systemUtilities) continue
+
+      // Skip Google core services
+      if (packageName.startsWith("com.google.android.gms") ||
+          packageName.startsWith("com.google.android.gsf")) continue
+
+      // Must have launcher activity
+      val launchIntent = try {
+        packageManager.getLaunchIntentForPackage(packageName)
+      } catch (e: Exception) {
+        null
+      }
+      if (launchIntent == null) continue
+
+      // User app or updated system app
+      val isUserApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0
+      val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+
+      if (isUserApp || isUpdatedSystemApp) {
+        blockedPackages.add(packageName)
+      }
+    }
+
+    return blockedPackages
+  }
+
+  /**
    * Block all installed user apps.
    * Creates a session with all installed apps in the blocked list.
    *
@@ -513,47 +592,7 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
   @ReactMethod
   fun blockAllApps(sessionId: String?, endsAt: Double?, styleMap: ReadableMap?, promise: Promise) {
     try {
-      // Get all installed apps
-      val packageManager = reactContext.packageManager
-      val installedApps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
-
-      val blockedPackages = mutableSetOf<String>()
-
-      for (appInfo in installedApps) {
-        val packageName = appInfo.packageName
-
-        // Skip current app
-        if (packageName == reactContext.packageName) continue
-
-        // Skip system utilities
-        val systemUtilities = setOf(
-          "com.android.settings",
-          "com.android.documentsui",
-          "com.android.packageinstaller",
-          "com.google.android.packageinstaller"
-        )
-        if (packageName in systemUtilities) continue
-
-        // Skip Google core services
-        if (packageName.startsWith("com.google.android.gms") ||
-            packageName.startsWith("com.google.android.gsf")) continue
-
-        // Must have launcher activity
-        val launchIntent = try {
-          packageManager.getLaunchIntentForPackage(packageName)
-        } catch (e: Exception) {
-          null
-        }
-        if (launchIntent == null) continue
-
-        // User app or updated system app
-        val isUserApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0
-        val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-
-        if (isUserApp || isUpdatedSystemApp) {
-          blockedPackages.add(packageName)
-        }
-      }
+      val blockedPackages = getFilteredUserApps()
 
       // Create session
       val id = sessionId ?: "block-all"
@@ -716,48 +755,8 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
       // Calculate end time
       val endsAt = System.currentTimeMillis() + (durationSeconds * 1000L)
 
-      // Block all apps with the end time using the same logic as blockAllApps
-      // Get all installed apps
-      val packageManager = reactContext.packageManager
-      val installedApps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
-
-      val blockedPackages = mutableSetOf<String>()
-
-      for (appInfo in installedApps) {
-        val packageName = appInfo.packageName
-
-        // Skip current app
-        if (packageName == reactContext.packageName) continue
-
-        // Skip system utilities
-        val systemUtilities = setOf(
-          "com.android.settings",
-          "com.android.documentsui",
-          "com.android.packageinstaller",
-          "com.google.android.packageinstaller"
-        )
-        if (packageName in systemUtilities) continue
-
-        // Skip Google core services
-        if (packageName.startsWith("com.google.android.gms") ||
-            packageName.startsWith("com.google.android.gsf")) continue
-
-        // Must have launcher activity
-        val launchIntent = try {
-          packageManager.getLaunchIntentForPackage(packageName)
-        } catch (e: Exception) {
-          null
-        }
-        if (launchIntent == null) continue
-
-        // User app or updated system app
-        val isUserApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0
-        val isUpdatedSystemApp = (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-
-        if (isUserApp || isUpdatedSystemApp) {
-          blockedPackages.add(packageName)
-        }
-      }
+      // Get all blockable apps using shared helper
+      val blockedPackages = getFilteredUserApps()
 
       // Create session with end time
       val session = SessionState(
@@ -784,6 +783,78 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
       promise.resolve(null)
     } catch (e: Exception) {
       promise.reject("ERROR", "Failed to temporarily block: ${e.message}", e)
+    }
+  }
+
+  /**
+   * Save a shield configuration with a given ID.
+   * The configuration can be referenced later when starting sessions.
+   *
+   * @param configId Unique identifier for this shield configuration
+   * @param styleMap Shield style configuration
+   */
+  @ReactMethod
+  fun configureShielding(configId: String, styleMap: ReadableMap, promise: Promise) {
+    try {
+      val style = parseShieldStyle(styleMap)
+      ShieldConfigurationStorageHelper.saveConfiguration(reactContext, configId, style)
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Failed to configure shielding: ${e.message}", e)
+    }
+  }
+
+  /**
+   * Update an existing shield configuration.
+   * If the configuration doesn't exist, it will be created.
+   *
+   * @param configId Unique identifier for the shield configuration
+   * @param styleMap Shield style configuration
+   */
+  @ReactMethod
+  fun updateShielding(configId: String, styleMap: ReadableMap, promise: Promise) {
+    try {
+      val style = parseShieldStyle(styleMap)
+      ShieldConfigurationStorageHelper.saveConfiguration(reactContext, configId, style)
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Failed to update shielding: ${e.message}", e)
+    }
+  }
+
+  /**
+   * Remove a shield configuration by ID.
+   * Returns whether the configuration was found and removed.
+   *
+   * @param configId Unique identifier for the shield configuration
+   */
+  @ReactMethod
+  fun removeShielding(configId: String, promise: Promise) {
+    try {
+      val removed = ShieldConfigurationStorageHelper.removeConfiguration(reactContext, configId)
+      promise.resolve(removed)
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Failed to remove shielding: ${e.message}", e)
+    }
+  }
+
+  /**
+   * Get all registered shield configurations.
+   * Returns a map of configuration IDs to their styles.
+   */
+  @ReactMethod
+  fun getShieldingConfigurations(promise: Promise) {
+    try {
+      val configurations = ShieldConfigurationStorageHelper.loadAllConfigurations(reactContext)
+      val result = Arguments.createMap()
+
+      for ((id, style) in configurations) {
+        result.putMap(id, serializeShieldStyle(style))
+      }
+
+      promise.resolve(result)
+    } catch (e: Exception) {
+      promise.reject("ERROR", "Failed to get shielding configurations: ${e.message}", e)
     }
   }
 
@@ -860,19 +931,33 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
 
   private fun hasUsageStatsPermission(): Boolean {
     val appOps = reactContext.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-    val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      appOps.unsafeCheckOpNoThrow(
-        AppOpsManager.OPSTR_GET_USAGE_STATS,
-        android.os.Process.myUid(),
-        reactContext.packageName
-      )
-    } else {
-      @Suppress("DEPRECATION")
-      appOps.checkOpNoThrow(
-        AppOpsManager.OPSTR_GET_USAGE_STATS,
-        android.os.Process.myUid(),
-        reactContext.packageName
-      )
+    val mode = when {
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        // API 31+ (Android 12+): Use checkOpNoThrow
+        appOps.checkOpNoThrow(
+          AppOpsManager.OPSTR_GET_USAGE_STATS,
+          android.os.Process.myUid(),
+          reactContext.packageName
+        )
+      }
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+        // API 29-30 (Android 10-11): Use unsafeCheckOpNoThrow
+        @Suppress("DEPRECATION")
+        appOps.unsafeCheckOpNoThrow(
+          AppOpsManager.OPSTR_GET_USAGE_STATS,
+          android.os.Process.myUid(),
+          reactContext.packageName
+        )
+      }
+      else -> {
+        // Below API 29: Use old checkOpNoThrow
+        @Suppress("DEPRECATION")
+        appOps.checkOpNoThrow(
+          AppOpsManager.OPSTR_GET_USAGE_STATS,
+          android.os.Process.myUid(),
+          reactContext.packageName
+        )
+      }
     }
     return mode == AppOpsManager.MODE_ALLOWED
   }
@@ -969,6 +1054,57 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
   }
 
   /**
+   * Serialize a ShieldStyle to WritableMap for React Native.
+   */
+  private fun serializeShieldStyle(style: BlockerAccessibilityService.ShieldStyle): WritableMap {
+    val map = Arguments.createMap()
+
+    // Text content
+    map.putString("title", style.title)
+    style.subtitle?.let { map.putString("subtitle", it) }
+    style.message?.let { map.putString("message", it) }
+
+    // Button configuration
+    map.putString("primaryButtonLabel", style.primaryButtonLabel)
+    style.secondaryButtonLabel?.let { map.putString("secondaryButtonLabel", it) }
+    @Suppress("DEPRECATION")
+    style.ctaText?.let { map.putString("ctaText", it) }
+
+    // Text colors
+    style.titleColor?.let { map.putMap("titleColor", serializeRGBColor(it)) }
+    style.subtitleColor?.let { map.putMap("subtitleColor", serializeRGBColor(it)) }
+    style.primaryButtonLabelColor?.let { map.putMap("primaryButtonLabelColor", serializeRGBColor(it)) }
+    style.secondaryButtonLabelColor?.let { map.putMap("secondaryButtonLabelColor", serializeRGBColor(it)) }
+
+    // Background colors
+    style.backgroundColor?.let { map.putMap("backgroundColor", serializeRGBColor(it)) }
+    style.primaryButtonBackgroundColor?.let { map.putMap("primaryButtonBackgroundColor", serializeRGBColor(it)) }
+    style.secondaryButtonBackgroundColor?.let { map.putMap("secondaryButtonBackgroundColor", serializeRGBColor(it)) }
+
+    // Icon configuration
+    style.iconTint?.let { map.putMap("iconTint", serializeRGBColor(it)) }
+    style.primaryImagePath?.let { map.putString("primaryImagePath", it) }
+    style.iconSystemName?.let { map.putString("iconSystemName", it) }
+
+    // Blur effect
+    style.backgroundBlurStyle?.let { map.putString("backgroundBlurStyle", it) }
+
+    return map
+  }
+
+  /**
+   * Serialize an RGBColor to WritableMap for React Native.
+   */
+  private fun serializeRGBColor(color: BlockerAccessibilityService.RGBColor): WritableMap {
+    val map = Arguments.createMap()
+    map.putInt("red", color.red)
+    map.putInt("green", color.green)
+    map.putInt("blue", color.blue)
+    map.putInt("alpha", color.alpha)
+    return map
+  }
+
+  /**
    * Convert drawable to base64 string for React Native.
    * Used for app icons.
    */
@@ -988,16 +1124,116 @@ class RNDeviceActivityAndroidModule(private val reactContext: ReactApplicationCo
       }
     }
 
-    // Scale down if too large (max 96x96 for performance)
-    val scaledBitmap = if (bitmap.width > 96 || bitmap.height > 96) {
-      Bitmap.createScaledBitmap(bitmap, 96, 96, true)
+    // Scale down if too large for performance
+    val scaledBitmap = if (bitmap.width > ICON_SIZE_PX || bitmap.height > ICON_SIZE_PX) {
+      Bitmap.createScaledBitmap(bitmap, ICON_SIZE_PX, ICON_SIZE_PX, true)
     } else {
       bitmap
     }
 
     val outputStream = ByteArrayOutputStream()
-    scaledBitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+    scaledBitmap.compress(Bitmap.CompressFormat.PNG, PNG_COMPRESSION_QUALITY, outputStream)
     val byteArray = outputStream.toByteArray()
     return Base64.encodeToString(byteArray, Base64.NO_WRAP)
+  }
+
+  /**
+   * Copy asset from React Native bundle to internal storage with versioning.
+   * Used for custom shield icons. Handles HTTP URIs (dev mode) and file:// URIs (production).
+   *
+   * @param imageUri URI to image (e.g., "http://localhost:8081/..." or "file://...")
+   * @param version Version number for cache invalidation
+   * @return Absolute path to cached file, or null if copy failed
+   */
+  fun copyAssetToInternalStorage(imageUri: String, version: Int): String? {
+    try {
+      android.util.Log.d("RNDeviceActivity", "copyAssetToInternalStorage: imageUri = $imageUri, version = $version")
+
+      // Create shield-icons directory in internal storage
+      val iconsDir = File(reactContext.filesDir, "shield-icons")
+      if (!iconsDir.exists()) {
+        val created = iconsDir.mkdirs()
+        android.util.Log.d("RNDeviceActivity", "Created icons directory: $created at ${iconsDir.absolutePath}")
+      }
+
+      // Generate versioned filename
+      val filename = "breakrr-icon-v$version.png"
+      val targetFile = File(iconsDir, filename)
+      android.util.Log.d("RNDeviceActivity", "Target file: ${targetFile.absolutePath}")
+
+      // Check if already cached with correct version
+      if (targetFile.exists()) {
+        android.util.Log.d("RNDeviceActivity", "Icon already cached: ${targetFile.absolutePath}")
+        return targetFile.absolutePath
+      }
+
+      // Delete old versions
+      iconsDir.listFiles()?.forEach { file ->
+        if (file.name.startsWith("breakrr-icon-v") && file.name != filename) {
+          file.delete()
+          android.util.Log.d("RNDeviceActivity", "Deleted old icon version: ${file.name}")
+        }
+      }
+
+      // Download or copy based on URI type
+      val inputStream = when {
+        imageUri.startsWith("http://") || imageUri.startsWith("https://") -> {
+          android.util.Log.d("RNDeviceActivity", "Downloading from HTTP: $imageUri")
+          val url = java.net.URL(imageUri)
+          url.openStream()
+        }
+        imageUri.startsWith("file://") -> {
+          android.util.Log.d("RNDeviceActivity", "Reading from file: $imageUri")
+          val filePath = imageUri.removePrefix("file://")
+          File(filePath).inputStream()
+        }
+        else -> {
+          // Try as asset path (fallback for old behavior)
+          android.util.Log.d("RNDeviceActivity", "Trying as asset path: $imageUri")
+          val cleanPath = imageUri.removePrefix("./")
+          reactContext.assets.open(cleanPath)
+        }
+      }
+
+      inputStream.use { input ->
+        targetFile.outputStream().use { output ->
+          val bytesCopied = input.copyTo(output)
+          android.util.Log.d("RNDeviceActivity", "Copied $bytesCopied bytes from $imageUri")
+        }
+      }
+
+      android.util.Log.d("RNDeviceActivity", "Icon cached successfully: ${targetFile.absolutePath}")
+      return targetFile.absolutePath
+
+    } catch (e: Exception) {
+      android.util.Log.e("RNDeviceActivity", "Failed to copy asset: ${e.javaClass.simpleName}: ${e.message}", e)
+      e.printStackTrace()
+      return null
+    }
+  }
+
+  /**
+   * Ensure icon is cached in internal storage.
+   * Called from React Native to cache custom shield icons.
+   *
+   * @param imageUri URI to image (resolved from Image.resolveAssetSource())
+   * @param version Version number for cache invalidation
+   * @param promise Resolves with cached file path or null
+   */
+  @ReactMethod
+  fun ensureIconCached(imageUri: String, version: Int, promise: Promise) {
+    android.util.Log.d("RNDeviceActivity", "ensureIconCached called with URI: $imageUri, version: $version")
+    try {
+      val cachedPath = copyAssetToInternalStorage(imageUri, version)
+      if (cachedPath != null) {
+        android.util.Log.d("RNDeviceActivity", "Icon cached successfully: $cachedPath")
+      } else {
+        android.util.Log.w("RNDeviceActivity", "Icon caching returned null for URI: $imageUri")
+      }
+      promise.resolve(cachedPath)
+    } catch (e: Exception) {
+      android.util.Log.e("RNDeviceActivity", "Failed to ensure icon cached: ${e.message}", e)
+      promise.resolve(null) // Return null instead of rejecting to allow fallback
+    }
   }
 }

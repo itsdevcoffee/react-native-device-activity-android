@@ -96,7 +96,7 @@ export function CompactSectionedList({
             styles.row,
             {
               height: rowHeight,
-              backgroundColor: theme.card,
+              backgroundColor: theme.surface,
               borderBottomColor: theme.border,
               opacity: isDisabled ? 0.4 : 1,
             },

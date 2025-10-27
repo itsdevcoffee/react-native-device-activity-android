@@ -18,22 +18,89 @@ import DeviceActivityAndroid, {
 } from '@breakrr/react-native-device-activity-android'
 import { AppSelector, type AppItem } from './components/AppSelector'
 import { storageHelpers } from './storage'
+import { ensureCustomIconCached } from './utils/iconHelper'
+import { DEFAULT_ICON_SIZE } from './constants'
 
-// Modern iOS-style shield configuration
-const SHIELD_STYLE: ShieldStyle = {
-  title: '🔒 focus mode',
-  subtitle: 'gentle shield active',
-  primaryButtonLabel: 'Close',
-  titleColor: { red: 42, green: 42, blue: 42 },
-  subtitleColor: { red: 109, green: 109, blue: 109 },
-  backgroundColor: { red: 255, green: 253, blue: 249 },
-  backgroundBlurStyle: 'light',
-  iconTint: { red: 96, green: 167, blue: 164 },
-  primaryButtonBackgroundColor: { red: 255, green: 227, blue: 236 },
-  primaryButtonLabelColor: { red: 122, green: 40, blue: 75 },
-  secondaryButtonLabel: 'Unlock',
-  secondaryButtonLabelColor: { red: 124, green: 124, blue: 124 },
-}
+// Create shield themes factory function
+const createShieldThemes = (cachedIconPath: string | null) => ({
+  // Light mode (for reference/testing)
+  light: {
+    title: '🔒 Focus Mode',
+    subtitle: 'Stay on track',
+    primaryButtonLabel: 'Close',
+    titleColor: { red: 42, green: 42, blue: 42 },
+    subtitleColor: { red: 109, green: 109, blue: 109 },
+    backgroundColor: { red: 255, green: 253, blue: 249 },
+    backgroundBlurStyle: 'light' as const,
+    iconTint: { red: 96, green: 167, blue: 164 },
+    primaryButtonBackgroundColor: { red: 255, green: 227, blue: 236 },
+    primaryButtonLabelColor: { red: 122, green: 40, blue: 75 },
+    secondaryButtonLabel: 'Unlock',
+    secondaryButtonLabelColor: { red: 124, green: 124, blue: 124 },
+  },
+  // Dark mode (new default with custom icon)
+  dark: {
+    title: '🔒 Blocked',
+    subtitle: 'Open app to unlock',
+    primaryButtonLabel: 'Unlock',
+    titleColor: { red: 255, green: 255, blue: 255 },
+    subtitleColor: { red: 200, green: 200, blue: 200 },
+    backgroundColor: { red: 18, green: 35, blue: 42 },
+    backgroundBlurStyle: 'dark' as const,
+    iconTint: { red: 28, green: 58, blue: 68 },
+    primaryButtonBackgroundColor: { red: 10, green: 10, blue: 10 },
+    primaryButtonLabelColor: { red: 255, green: 255, blue: 255 },
+    secondaryButtonLabel: 'Close',
+    secondaryButtonLabelColor: { red: 230, green: 230, blue: 230 },
+    ...(cachedIconPath && {
+      primaryImagePath: cachedIconPath,
+      iconSize: DEFAULT_ICON_SIZE,
+    }),
+  },
+  // Legacy themes (kept for compatibility)
+  gentle: {
+    title: '🔒 focus mode',
+    subtitle: 'gentle shield active',
+    primaryButtonLabel: 'Close',
+    titleColor: { red: 42, green: 42, blue: 42 },
+    subtitleColor: { red: 109, green: 109, blue: 109 },
+    backgroundColor: { red: 255, green: 253, blue: 249 },
+    backgroundBlurStyle: 'light' as const,
+    iconTint: { red: 96, green: 167, blue: 164 },
+    primaryButtonBackgroundColor: { red: 255, green: 227, blue: 236 },
+    primaryButtonLabelColor: { red: 122, green: 40, blue: 75 },
+    secondaryButtonLabel: 'Unlock',
+    secondaryButtonLabelColor: { red: 124, green: 124, blue: 124 },
+  },
+  focus: {
+    title: '⚡ Deep Focus',
+    subtitle: 'Stay in the zone',
+    primaryButtonLabel: 'Back to Work',
+    titleColor: { red: 51, green: 51, blue: 51 },
+    subtitleColor: { red: 102, green: 102, blue: 102 },
+    backgroundColor: { red: 240, green: 248, blue: 255 },
+    backgroundBlurStyle: 'light' as const,
+    iconTint: { red: 0, green: 122, blue: 255 },
+    primaryButtonBackgroundColor: { red: 0, green: 122, blue: 255 },
+    primaryButtonLabelColor: { red: 255, green: 255, blue: 255 },
+    secondaryButtonLabel: 'Take a Break',
+    secondaryButtonLabelColor: { red: 142, green: 142, blue: 147 },
+  },
+  night: {
+    title: '🌙 Night Mode',
+    subtitle: 'Time to rest',
+    primaryButtonLabel: 'Close',
+    titleColor: { red: 255, green: 255, blue: 255 },
+    subtitleColor: { red: 174, green: 174, blue: 178 },
+    backgroundColor: { red: 28, green: 28, blue: 30 },
+    backgroundBlurStyle: 'dark' as const,
+    iconTint: { red: 142, green: 142, blue: 147 },
+    primaryButtonBackgroundColor: { red: 58, green: 58, blue: 60 },
+    primaryButtonLabelColor: { red: 255, green: 255, blue: 255 },
+    secondaryButtonLabel: 'Emergency Only',
+    secondaryButtonLabelColor: { red: 174, green: 174, blue: 178 },
+  },
+})
 
 export default function App() {
   const [permissions, setPermissions] = useState<PermissionsStatus>({
@@ -48,6 +115,7 @@ export default function App() {
   const [installedApps, setInstalledApps] = useState<AppItem[]>([])
   const [loadingApps, setLoadingApps] = useState(false)
   const [selectorMode, setSelectorMode] = useState<'list' | 'grid'>('list')
+  const [overlayTheme, setOverlayTheme] = useState<'light' | 'dark'>('dark') // Default to dark mode
   const [tempBlockSeconds, setTempBlockSeconds] = useState('15')
   const [tempUnblockSeconds, setTempUnblockSeconds] = useState('15')
   const [tempBlockTimeRemaining, setTempBlockTimeRemaining] = useState<number | null>(null)
@@ -57,13 +125,31 @@ export default function App() {
     startTime: number
     durationSeconds: number
   } | null>(null)
+  const [cachedIconPath, setCachedIconPath] = useState<string | null>(null)
   const tempBlockCountdownRef = useRef<NodeJS.Timeout | null>(null)
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const isInitialMount = useRef(true)
 
+  // Create shield themes with cached icon path
+  const SHIELD_THEMES = useMemo(() => createShieldThemes(cachedIconPath), [cachedIconPath])
+
   useEffect(() => {
     checkPermissions()
     checkBlockStatus()
+
+    // Ensure custom icon is cached and register shield configs
+    const setupIcon = async () => {
+      try {
+        const cachedPath = await ensureCustomIconCached()
+        if (cachedPath) {
+          console.log('✅ Custom icon cached:', cachedPath)
+          setCachedIconPath(cachedPath)
+        }
+      } catch (error) {
+        console.error('Failed to cache custom icon:', error)
+      }
+    }
+    setupIcon()
 
     // Load persisted data from MMKV
     const savedPackages = storageHelpers.getBlockedPackages()
@@ -98,6 +184,23 @@ export default function App() {
   useEffect(() => {
     storageHelpers.setSelectorMode(selectorMode)
   }, [selectorMode])
+
+  // Register shield configuration themes when they're ready
+  useEffect(() => {
+    const registerShieldConfigs = async () => {
+      try {
+        await DeviceActivityAndroid.configureShielding('light', SHIELD_THEMES.light)
+        await DeviceActivityAndroid.configureShielding('dark', SHIELD_THEMES.dark)
+        await DeviceActivityAndroid.configureShielding('gentle', SHIELD_THEMES.gentle)
+        await DeviceActivityAndroid.configureShielding('focus', SHIELD_THEMES.focus)
+        await DeviceActivityAndroid.configureShielding('night', SHIELD_THEMES.night)
+        console.log('✅ Shield configurations registered')
+      } catch (error) {
+        console.error('Failed to register shield configurations:', error)
+      }
+    }
+    registerShieldConfigs()
+  }, [SHIELD_THEMES])
 
   // Countdown timer for temporary block
   useEffect(() => {
@@ -190,7 +293,8 @@ export default function App() {
               blockedPackages: blockedPackages,
               endsAt: undefined,
             },
-            SHIELD_STYLE
+            undefined,
+            overlayTheme
           )
         }
       } catch (error: any) {
@@ -284,7 +388,8 @@ export default function App() {
           blockedPackages,
           endsAt: Date.now() + 5 * 60 * 1000,
         },
-        SHIELD_STYLE
+        undefined,
+        'focus'
       )
 
       setSessionActive(true)
@@ -329,7 +434,8 @@ export default function App() {
           blockedPackages: blockedPackages,
           endsAt: undefined, // Indefinite blocking
         },
-        SHIELD_STYLE
+        undefined,
+        overlayTheme
       )
       setSessionActive(true)
       setActiveTimer(null) // Clear any timer since this is indefinite
@@ -373,7 +479,8 @@ export default function App() {
           blockedPackages: blockedPackages,
           endsAt: endsAt,
         },
-        SHIELD_STYLE
+        undefined,
+        overlayTheme
       )
 
       setSessionActive(true)
@@ -494,7 +601,8 @@ export default function App() {
           blockedPackages: blockedPackages,
           endsAt: undefined, // Indefinite blocking
         },
-        SHIELD_STYLE
+        undefined,
+        overlayTheme
       )
 
       setSessionActive(true)
@@ -586,6 +694,25 @@ export default function App() {
             >
               <Text style={styles.buttonText}>Block Status</Text>
             </TouchableOpacity>
+          </View>
+
+          {/* Overlay Theme Toggle */}
+          <View style={styles.themeToggleContainer}>
+            <Text style={styles.themeToggleLabel}>Overlay Theme:</Text>
+            <View style={styles.row}>
+              <TouchableOpacity
+                style={[styles.button, overlayTheme === 'light' && styles.buttonSelected]}
+                onPress={() => setOverlayTheme('light')}
+              >
+                <Text style={styles.buttonText}>☀️ Light</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, overlayTheme === 'dark' && styles.buttonSelected]}
+                onPress={() => setOverlayTheme('dark')}
+              >
+                <Text style={styles.buttonText}>🌙 Dark</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Temporary Unblock Section */}
@@ -692,6 +819,152 @@ export default function App() {
               ))}
             </ScrollView>
           )}
+        </View>
+
+        {/* Dynamic Shield Examples */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Dynamic Shield Examples</Text>
+          <Text style={styles.sectionSubtitle}>Test template variables in shield overlays</Text>
+
+          <TouchableOpacity
+            style={[styles.button, styles.buttonTeal, styles.buttonFullWidth, sessionActive && styles.buttonDisabled]}
+            onPress={async () => {
+              if (blockedPackages.length === 0) {
+                console.log('Please select at least one app to block')
+                return
+              }
+              await DeviceActivityAndroid.configureShielding('countdown-example', {
+                title: '⏱️ Time Remaining',
+                subtitle: 'Stay focused on your goals',
+                primaryButtonLabel: 'Close',
+                backgroundColor: { red: 245, green: 250, blue: 255 },
+                titleColor: { red: 30, green: 30, blue: 30 },
+                subtitleColor: { red: 0, green: 122, blue: 255 },
+                backgroundBlurStyle: 'light',
+              })
+              const duration = 20
+              await DeviceActivityAndroid.startSession(
+                {
+                  id: 'countdown-example-session',
+                  blockedPackages: blockedPackages,
+                  endsAt: Date.now() + duration * 1000,
+                },
+                undefined,
+                'countdown-example'
+              )
+              setSessionActive(true)
+              console.log('Countdown example started! Try opening a blocked app.')
+            }}
+            disabled={sessionActive}
+          >
+            <Text style={styles.buttonText}>1. Countdown Example</Text>
+            <Text style={styles.buttonSubtext}>Shows: "Unblocks in 20s, 19s..."</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, styles.buttonPink, styles.buttonFullWidth, sessionActive && styles.buttonDisabled]}
+            onPress={async () => {
+              if (blockedPackages.length === 0) {
+                console.log('Please select at least one app to block')
+                return
+              }
+              await DeviceActivityAndroid.configureShielding('powerpoints-example', {
+                title: '💪 Power Points',
+                subtitle: 'You have {{powerPoints}} points left',
+                message: 'Keep focusing to earn more!',
+                primaryButtonLabel: 'Back to Work',
+                backgroundColor: { red: 255, green: 245, blue: 250 },
+                titleColor: { red: 147, green: 51, blue: 234 },
+                subtitleColor: { red: 100, green: 100, blue: 100 },
+                backgroundBlurStyle: 'light',
+              })
+              await DeviceActivityAndroid.startSession(
+                {
+                  id: 'powerpoints-example-session',
+                  blockedPackages: blockedPackages,
+                  endsAt: Date.now() + 30 * 1000,
+                },
+                undefined,
+                'powerpoints-example'
+              )
+              setSessionActive(true)
+              console.log('Power Points example started!')
+            }}
+            disabled={sessionActive}
+          >
+            <Text style={styles.buttonText}>2. Power Points Example</Text>
+            <Text style={styles.buttonSubtext}>Shows: "You have 150 points left"</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, styles.buttonIndigo, styles.buttonFullWidth, sessionActive && styles.buttonDisabled]}
+            onPress={async () => {
+              if (blockedPackages.length === 0) {
+                console.log('Please select at least one app to block')
+                return
+              }
+              await DeviceActivityAndroid.configureShielding('timestamp-example', {
+                title: '🕐 Current Time',
+                subtitle: '{{timestamp}}',
+                message: 'Blocked until you finish your tasks',
+                primaryButtonLabel: 'Dismiss',
+                backgroundColor: { red: 248, green: 250, blue: 252 },
+                titleColor: { red: 50, green: 50, blue: 50 },
+                subtitleColor: { red: 100, green: 116, blue: 139 },
+                backgroundBlurStyle: 'light',
+              })
+              await DeviceActivityAndroid.startSession(
+                {
+                  id: 'timestamp-example-session',
+                  blockedPackages: blockedPackages,
+                  endsAt: Date.now() + 25 * 1000,
+                },
+                undefined,
+                'timestamp-example'
+              )
+              setSessionActive(true)
+              console.log('Timestamp example started!')
+            }}
+            disabled={sessionActive}
+          >
+            <Text style={styles.buttonText}>3. Timestamp Example</Text>
+            <Text style={styles.buttonSubtext}>Shows ISO timestamp</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, styles.buttonEmerald, styles.buttonFullWidth, sessionActive && styles.buttonDisabled]}
+            onPress={async () => {
+              if (blockedPackages.length === 0) {
+                console.log('Please select at least one app to block')
+                return
+              }
+              await DeviceActivityAndroid.configureShielding('appname-example', {
+                title: '🚫 {{appName}} Blocked',
+                subtitle: 'This app is currently restricted',
+                message: 'Focus on what matters most',
+                primaryButtonLabel: 'Got it',
+                backgroundColor: { red: 240, green: 253, blue: 244 },
+                titleColor: { red: 5, green: 150, blue: 105 },
+                subtitleColor: { red: 107, green: 114, blue: 128 },
+                backgroundBlurStyle: 'light',
+              })
+              await DeviceActivityAndroid.startSession(
+                {
+                  id: 'appname-example-session',
+                  blockedPackages: blockedPackages,
+                  endsAt: Date.now() + 30 * 1000,
+                },
+                undefined,
+                'appname-example'
+              )
+              setSessionActive(true)
+              console.log('App Name example started!')
+            }}
+            disabled={sessionActive}
+          >
+            <Text style={styles.buttonText}>4. App Name Example</Text>
+            <Text style={styles.buttonSubtext}>Shows blocked app name dynamically</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Mode Toggle */}
@@ -847,6 +1120,18 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 5,
   },
+  buttonPink: {
+    backgroundColor: '#E91E63',
+    marginBottom: 8,
+  },
+  buttonIndigo: {
+    backgroundColor: '#3F51B5',
+    marginBottom: 8,
+  },
+  buttonEmerald: {
+    backgroundColor: '#059669',
+    marginBottom: 8,
+  },
   buttonDisabled: {
     backgroundColor: '#ccc',
   },
@@ -858,6 +1143,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 14,
     textAlign: 'center',
+  },
+  buttonSubtext: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 12,
   },
   row: {
     flexDirection: 'row',
@@ -965,6 +1261,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#C62828',
     textAlign: 'center',
+  },
+  themeToggleContainer: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  themeToggleLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
   },
   activeText: {
     marginTop: 12,

@@ -207,7 +207,7 @@ export function AdaptiveGridChips({
             style={[
               styles.categoryChip,
               {
-                backgroundColor: categoryFilter === null ? theme.primary : theme.card,
+                backgroundColor: categoryFilter === null ? theme.primary : theme.surfaceElevated,
                 borderColor: categoryFilter === null ? theme.primary : theme.border,
               },
             ]}
@@ -228,7 +228,7 @@ export function AdaptiveGridChips({
               style={[
                 styles.categoryChip,
                 {
-                  backgroundColor: categoryFilter === cat ? theme.primary : theme.card,
+                  backgroundColor: categoryFilter === cat ? theme.primary : theme.surfaceElevated,
                   borderColor: categoryFilter === cat ? theme.primary : theme.border,
                 },
               ]}

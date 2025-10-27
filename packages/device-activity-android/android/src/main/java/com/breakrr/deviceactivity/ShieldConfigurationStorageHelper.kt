@@ -5,135 +5,134 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Helper class for saving and restoring session data to/from SharedPreferences.
- * Used for temporary unblock feature to persist sessions across app restarts.
+ * Helper class for managing shield configurations in persistent storage.
+ * Supports pre-registration of shield configs that can be referenced by ID.
  */
-object SessionStorageHelper {
+object ShieldConfigurationStorageHelper {
   private const val PREFS_NAME = "DeviceActivityPrefs"
-  private const val KEY_SESSIONS = "saved_sessions"
-  private const val KEY_STYLES = "saved_styles"
+  private const val KEY_SHIELD_CONFIGS = "shield_configurations"
+
+  // In-memory cache of configurations
+  private val configCache = mutableMapOf<String, BlockerAccessibilityService.ShieldStyle>()
 
   /**
-   * Save current sessions and styles to SharedPreferences.
+   * Save a shield configuration with a given ID.
    */
-  fun saveSessions(
+  fun saveConfiguration(
     context: Context,
-    sessions: Map<String, SessionState>,
-    styles: Map<String, BlockerAccessibilityService.ShieldStyle>
+    configId: String,
+    style: BlockerAccessibilityService.ShieldStyle
   ) {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    val editor = prefs.edit()
+    val existingConfigs = loadAllConfigurations(context).toMutableMap()
 
-    // Serialize sessions to JSON
-    val sessionsJson = JSONArray()
-    for ((id, session) in sessions) {
-      val sessionObj = JSONObject().apply {
-        put("id", session.id)
-        put("blocked", JSONArray(session.blocked.toList()))
-        put("allow", JSONArray(session.allow.toList()))
-        put("startsAt", session.startsAt ?: JSONObject.NULL)
-        put("endsAt", session.endsAt ?: JSONObject.NULL)
-      }
-      sessionsJson.put(sessionObj)
+    // Add or update the configuration
+    existingConfigs[configId] = style
+    configCache[configId] = style
+
+    // Serialize all configurations
+    val configsJson = JSONObject()
+    for ((id, config) in existingConfigs) {
+      configsJson.put(id, serializeShieldStyle(config))
     }
 
-    // Serialize styles to JSON (using comprehensive serialization)
-    val stylesJson = JSONObject()
-    for ((id, style) in styles) {
-      stylesJson.put(id, serializeShieldStyle(style))
-    }
+    prefs.edit()
+      .putString(KEY_SHIELD_CONFIGS, configsJson.toString())
+      .apply()
 
-    editor.putString(KEY_SESSIONS, sessionsJson.toString())
-    editor.putString(KEY_STYLES, stylesJson.toString())
-    editor.apply()
-
-    android.util.Log.d("RNDeviceActivity", "Saved ${sessions.size} sessions to SharedPreferences")
+    android.util.Log.d("RNDeviceActivity", "Saved shield configuration: $configId")
   }
 
   /**
-   * Restore sessions and styles from SharedPreferences and add them to the service.
-   * Returns true if sessions were restored, false if no saved sessions found.
+   * Get a shield configuration by ID.
+   * Returns null if not found.
    */
-  fun restoreSessions(context: Context): Boolean {
+  fun getConfiguration(context: Context, configId: String): BlockerAccessibilityService.ShieldStyle? {
+    // Check cache first
+    if (configCache.containsKey(configId)) {
+      return configCache[configId]
+    }
+
+    // Load from storage
+    val allConfigs = loadAllConfigurations(context)
+    val config = allConfigs[configId]
+
+    // Update cache if found
+    if (config != null) {
+      configCache[configId] = config
+    }
+
+    return config
+  }
+
+  /**
+   * Load all shield configurations from storage.
+   */
+  fun loadAllConfigurations(context: Context): Map<String, BlockerAccessibilityService.ShieldStyle> {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    val sessionsJson = prefs.getString(KEY_SESSIONS, null) ?: return false
-    val stylesJson = prefs.getString(KEY_STYLES, null)
+    val configsJson = prefs.getString(KEY_SHIELD_CONFIGS, null) ?: return emptyMap()
 
-    try {
-      // Parse sessions
-      val sessionsArray = JSONArray(sessionsJson)
-      if (sessionsArray.length() == 0) {
-        return false
+    return try {
+      val configsObj = JSONObject(configsJson)
+      val result = mutableMapOf<String, BlockerAccessibilityService.ShieldStyle>()
+
+      val keys = configsObj.keys()
+      while (keys.hasNext()) {
+        val id = keys.next()
+        val styleJson = configsObj.getJSONObject(id)
+        result[id] = deserializeShieldStyle(styleJson)
       }
 
-      val styles = mutableMapOf<String, BlockerAccessibilityService.ShieldStyle>()
+      // Update cache
+      configCache.clear()
+      configCache.putAll(result)
 
-      // Parse styles if available (using comprehensive deserialization)
-      if (stylesJson != null) {
-        val stylesObj = JSONObject(stylesJson)
-        val keys = stylesObj.keys()
-        while (keys.hasNext()) {
-          val id = keys.next()
-          val styleObj = stylesObj.getJSONObject(id)
-          styles[id] = deserializeShieldStyle(styleObj)
-        }
+      result
+    } catch (e: Exception) {
+      android.util.Log.e("RNDeviceActivity", "Failed to load shield configurations", e)
+      emptyMap()
+    }
+  }
+
+  /**
+   * Remove a shield configuration by ID.
+   * Returns true if the configuration was found and removed.
+   */
+  fun removeConfiguration(context: Context, configId: String): Boolean {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    val existingConfigs = loadAllConfigurations(context).toMutableMap()
+
+    val removed = existingConfigs.remove(configId) != null
+    if (removed) {
+      configCache.remove(configId)
+
+      // Serialize remaining configurations
+      val configsJson = JSONObject()
+      for ((id, config) in existingConfigs) {
+        configsJson.put(id, serializeShieldStyle(config))
       }
 
-      // Restore each session
-      for (i in 0 until sessionsArray.length()) {
-        val sessionObj = sessionsArray.getJSONObject(i)
-        val id = sessionObj.getString("id")
-
-        val blocked = mutableSetOf<String>()
-        val blockedArray = sessionObj.getJSONArray("blocked")
-        for (j in 0 until blockedArray.length()) {
-          blocked.add(blockedArray.getString(j))
-        }
-
-        val allow = mutableSetOf<String>()
-        val allowArray = sessionObj.getJSONArray("allow")
-        for (j in 0 until allowArray.length()) {
-          allow.add(allowArray.getString(j))
-        }
-
-        val startsAt = if (sessionObj.isNull("startsAt")) null else sessionObj.getLong("startsAt")
-        val endsAt = if (sessionObj.isNull("endsAt")) null else sessionObj.getLong("endsAt")
-
-        val session = SessionState(
-          id = id,
-          blocked = blocked,
-          allow = allow,
-          startsAt = startsAt,
-          endsAt = endsAt
-        )
-
-        BlockerAccessibilityService.addSession(session, styles[id])
-      }
-
-      // Clear saved data after restoration
       prefs.edit()
-        .remove(KEY_SESSIONS)
-        .remove(KEY_STYLES)
+        .putString(KEY_SHIELD_CONFIGS, configsJson.toString())
         .apply()
 
-      android.util.Log.d("RNDeviceActivity", "Restored ${sessionsArray.length()} sessions from SharedPreferences")
-      return true
-
-    } catch (e: Exception) {
-      android.util.Log.e("RNDeviceActivity", "Failed to restore sessions", e)
-      return false
+      android.util.Log.d("RNDeviceActivity", "Removed shield configuration: $configId")
     }
+
+    return removed
   }
 
   /**
-   * Clear any saved session data.
+   * Clear all shield configurations.
    */
-  fun clearSavedSessions(context: Context) {
+  fun clearAllConfigurations(context: Context) {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     prefs.edit()
-      .remove(KEY_SESSIONS)
-      .remove(KEY_STYLES)
+      .remove(KEY_SHIELD_CONFIGS)
       .apply()
+
+    configCache.clear()
+    android.util.Log.d("RNDeviceActivity", "Cleared all shield configurations")
   }
 
   /**
