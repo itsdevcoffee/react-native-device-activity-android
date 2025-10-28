@@ -1,6 +1,6 @@
 {
   "name": "@breakr/react-native-device-activity-android",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "React Native Device Activity for Android - Screen blocking functionality using Accessibility Service",
   "main": "lib/index.js",
   "types": "index.d.ts",
