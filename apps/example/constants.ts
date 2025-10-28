@@ -3,6 +3,7 @@
  */
 
 // Import the image asset so React Native bundles it properly
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 export const ROBOT_HEAD_IMAGE = require('./assets/robot-head.png')
 
 export const ICON_VERSION_NUMBER = 1

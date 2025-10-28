@@ -6,7 +6,7 @@ import DeviceActivityAndroid from '@breakr/react-native-device-activity-android'
 import { Button, Card, Badge } from '../../components/ui'
 import { colors } from '../../theme/colors'
 import { typography } from '../../theme/typography'
-import { spacing, borderRadius } from '../../theme/spacing'
+import { spacing } from '../../theme/spacing'
 import { storageHelpers } from '../../storage'
 
 /**

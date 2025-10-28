@@ -14,7 +14,6 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
-  interpolate,
 } from 'react-native-reanimated'
 import { Icon } from '../Icon'
 import { SectionHeader } from '../SectionHeader'
@@ -279,7 +278,6 @@ function GridChip({
   onPress,
   density,
   theme,
-  columns,
 }: GridChipProps) {
   const scale = useSharedValue(isSelected ? 1 : 0.98)
   const badgeScale = useSharedValue(isSelected ? 1 : 0)

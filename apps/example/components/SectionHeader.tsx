@@ -3,10 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withTiming,
   withSpring,
   interpolate,
-  Easing,
 } from 'react-native-reanimated'
 import type { ThemeTokens } from './types'
 
@@ -53,7 +51,6 @@ export const SectionHeader = memo(
     onClearAll,
     theme,
     collapsible = true,
-    isSticky = false,
   }: SectionHeaderProps) => {
     const rotation = useSharedValue(collapsed ? 0 : 1)
 

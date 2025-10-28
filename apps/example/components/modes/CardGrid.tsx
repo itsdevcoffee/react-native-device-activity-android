@@ -57,7 +57,6 @@ const GridTile = React.memo(
     onPress,
     density,
     theme,
-    index,
   }: {
     app: AppItem
     isSelected: boolean

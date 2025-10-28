@@ -142,7 +142,7 @@ export const DEFAULT_CATEGORY_ORDER: string[] = [
  * Map category display name to category ID.
  */
 export function getCategoryIdFromName(name: string): AppCategory | null {
-  const entry = Object.entries(APP_CATEGORY_LABELS).find(([_, label]) => label === name)
+  const entry = Object.entries(APP_CATEGORY_LABELS).find(([, label]) => label === name)
   return entry ? (parseInt(entry[0]) as AppCategory) : null
 }
 

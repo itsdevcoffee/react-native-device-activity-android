@@ -42,6 +42,7 @@ export function CompactSectionedList({
   onSelectAll,
   onClearCategory,
   showPackageName,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   showSelectAll,
   disabledIds,
   density,

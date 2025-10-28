@@ -55,7 +55,6 @@ const ListRow = memo(
     theme,
     density,
     showPackageName,
-    index,
   }: {
     item: AppItem
     isSelected: boolean

@@ -9,6 +9,7 @@ module.exports = {
     'plugin:react-hooks/recommended',
     'prettier',
   ],
+  ignorePatterns: ['**/lib/**', '**/node_modules/**', '**/build/**', '**/android/build/**'],
   env: {
     node: true,
     es2021: true,

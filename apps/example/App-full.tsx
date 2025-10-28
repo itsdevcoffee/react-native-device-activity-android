@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   TextInput,
   FlatList,
-  Switch,
   Alert,
 } from 'react-native'
 import { StatusBar } from 'expo-status-bar'

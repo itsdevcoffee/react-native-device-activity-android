@@ -1,6 +1,6 @@
 import { ThemeTokens } from '../components/types'
 import { lightThemeColors, darkThemeColors } from './colors'
-import { borderRadius, elevation } from './spacing'
+import { borderRadius } from './spacing'
 
 /**
  * Stripe-inspired theme tokens for the app

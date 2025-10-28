@@ -1,5 +1,5 @@
+/* eslint-disable @typescript-eslint/no-var-requires */
 const {
-  AndroidConfig,
   withAndroidManifest,
   createRunOncePlugin,
 } = require('@expo/config-plugins')

@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router'
-import { Text, Platform } from 'react-native'
+import { Text } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors } from '../../theme/colors'
 

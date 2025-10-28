@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { View, Text, StyleSheet, Animated } from 'react-native'
+import { Text, StyleSheet, Animated } from 'react-native'
 import { colors } from '../../theme/colors'
 import { typography } from '../../theme/typography'
 import { spacing, borderRadius, elevation } from '../../theme/spacing'

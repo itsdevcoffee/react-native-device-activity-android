@@ -13,7 +13,6 @@ import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import DeviceActivityAndroid, {
   type PermissionsStatus,
-  type ShieldStyle,
   getCategoryLabel,
 } from '@breakr/react-native-device-activity-android'
 import { AppSelector, type AppItem } from './components/AppSelector'
@@ -375,6 +374,8 @@ export default function App() {
     return app?.name || packageName
   }
 
+  // Utility functions for programmatic session control (not currently used in UI)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const startFocusSession = async () => {
     try {
       if (blockedPackages.length === 0) {
@@ -399,6 +400,7 @@ export default function App() {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const stopFocusSession = async () => {
     try {
       await DeviceActivityAndroid.stopAllSessions()
@@ -858,7 +860,7 @@ export default function App() {
             disabled={sessionActive}
           >
             <Text style={styles.buttonText}>1. Countdown Example</Text>
-            <Text style={styles.buttonSubtext}>Shows: "Unblocks in 20s, 19s..."</Text>
+            <Text style={styles.buttonSubtext}>Shows: &ldquo;Unblocks in 20s, 19s...&rdquo;</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -893,7 +895,7 @@ export default function App() {
             disabled={sessionActive}
           >
             <Text style={styles.buttonText}>2. Power Points Example</Text>
-            <Text style={styles.buttonSubtext}>Shows: "You have 150 points left"</Text>
+            <Text style={styles.buttonSubtext}>Shows: &ldquo;You have 150 points left&rdquo;</Text>
           </TouchableOpacity>
 
           <TouchableOpacity

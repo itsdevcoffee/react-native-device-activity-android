@@ -21,7 +21,8 @@ export default function PermissionsScreen() {
     usageAccessEnabled: false,
     scheduleExactAlarmEnabled: false,
   })
-  const [loading, setLoading] = useState(false)
+  // Future: use for loading state during permission checks
+  // const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     checkPermissions()
